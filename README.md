@@ -9,6 +9,9 @@ Promptable is an intelligent platform designed to convert academic papers and re
 ## ✨ Key Features Implemented (MVP)
 
 - **Document Upload & Analysis**: Upload research papers (PDF, DOCX, TXT) for key concept extraction (principles, methods, frameworks, theories).
+  - PDF processing uses `pdf2json` for reliable server-side text extraction
+  - Supports multi-page documents with automatic text concatenation
+  - See `docs/pdf-processing.md` for technical details
 - **Context-Aware Prompt Generation**: AI-powered transformation of raw insights into persona- and content-type-specific actionable system prompts.
 - **System Prompt Review & Refine**: User can review the generated prompt and request modifications.
 - **Export Options**: Easily copy the generated system prompt to clipboard or download as a `.txt` file.

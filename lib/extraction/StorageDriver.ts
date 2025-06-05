@@ -13,7 +13,7 @@ export class StorageDriver {
             // Check if the directory exists. 
             // For fetching, we primarily care if the *file* exists, but ensuring directory exists is good practice.
             await fs.access(storageDirPath);
-        } catch (_error) {
+        } catch {
             // If storageDirPath doesn't exist, it's a server config issue or first run.
             console.error(`[STORAGE] Storage directory ${storageDirPath} does not exist. Attempting to create.`);
             try {

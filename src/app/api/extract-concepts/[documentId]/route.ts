@@ -3,10 +3,9 @@ import { ExtractionKernel } from '@/lib/extraction/ExtractionKernel';
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { documentId: string } }
+    { params }: { params: Promise<{ documentId: string }> }
 ) {
-    await request.blob(); // Ensures params are populated
-    const { documentId } = params;
+    const { documentId } = await params;
     console.log(`[EXTRACT_API] Received request for documentId: ${documentId}`);
 
     if (!documentId) {

@@ -10,20 +10,16 @@
     "lint": "next lint",
     "test": "tsx --env-file .env.test test/persona-validation.ts",
     "test:kernel-integration": "tsx --env-file .env.test test/kernel.integration.test.ts",
-    "test:all": "npm run test && npm run test:kernel-integration"
-  },
-  "imports": {
-    "@/*": "./dist/src/*",
-    "@/lib/*": "./dist/lib/*",
-    "@/types": "./dist/types/index.js",
-    "@/components/*": "./dist/components/*"
+    "test:all": "npm run test && npm run test:kernel-integration",
+    "validate": "npm run build && echo '✅ Build successful!'",
+    "clean": "rm -rf .next node_modules package-lock.json && npm install && npm run build"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.70",
     "mammoth": "^1.9.1",
     "next": "15.3.3",
     "openai": "^5.1.0",
-    "pdfjs-dist": "^5.3.31",
+    "pdf2json": "^3.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

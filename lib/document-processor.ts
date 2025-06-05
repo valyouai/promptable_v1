@@ -1,50 +1,73 @@
-import { TextItem } from 'pdfjs-dist/types/src/display/api';
-
-const getMammoth = async () => {
-    return (await import('mammoth')).default;
-};
+import PDFParser from 'pdf2json';
 
 export async function extractTextFromPdf(file: File): Promise<string> {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    console.log('[extractTextFromPdf] Received file:', file.name, 'Type:', file.type, 'Size:', file.size);
 
-    if (!pdfjs || !pdfjs.GlobalWorkerOptions) {
-        // A basic check to ensure the module loaded somewhat correctly
-        console.error('pdfjs-dist module or GlobalWorkerOptions not found after dynamic import.');
-        throw new Error('Failed to load pdfjs-dist module correctly.');
-    }
+    return new Promise(async (resolve, reject) => {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            console.log('[extractTextFromPdf] Converted to Buffer. Length:', buffer.length);
 
-    // Setting workerSrc to empty string for Node.js internal worker handling
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
+            const pdfParser = new PDFParser();
 
-    const arrayBuffer = await file.arrayBuffer();
-    const pdfDocument = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-    let fullText = '';
+            pdfParser.on('pdfParser_dataError', (errData: Record<'parserError', Error>) => {
+                console.error('[extractTextFromPdf] PDF parsing error:', errData.parserError);
+                reject(new Error(`PDF parsing failed: ${errData.parserError.message}`));
+            });
 
-    for (let i = 1; i <= pdfDocument.numPages; i++) {
-        const page = await pdfDocument.getPage(i);
-        const textContent = await page.getTextContent();
-        // Ensure item is correctly typed for the filter and map operations
-        const pageText = textContent.items
-            .filter((item): item is TextItem => (item as TextItem).str !== undefined)
-            .map((item: TextItem) => item.str)
-            .join(' ');
-        fullText += pageText + '\n';
-    }
-    return fullText;
+            pdfParser.on('pdfParser_dataReady', (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
+                console.log('[extractTextFromPdf] PDF parsed successfully');
+
+                // Extract text from all pages
+                let fullText = '';
+
+                if (pdfData.Pages) {
+                    pdfData.Pages.forEach((page, pageIndex: number) => {
+                        console.log(`[extractTextFromPdf] Processing page ${pageIndex + 1}/${pdfData.Pages.length}`);
+
+                        if (page.Texts) {
+                            page.Texts.forEach((text) => {
+                                if (text.R && text.R[0] && text.R[0].T) {
+                                    // Decode URI component to get actual text
+                                    const decodedText = decodeURIComponent(text.R[0].T);
+                                    fullText += decodedText + ' ';
+                                }
+                            });
+                        }
+                        fullText += '\n';
+                    });
+                }
+
+                console.log('[extractTextFromPdf] Text extraction complete. Total length:', fullText.length);
+                resolve(fullText.trim());
+            });
+
+            // Parse the PDF buffer
+            console.log('[extractTextFromPdf] Starting PDF parsing...');
+            pdfParser.parseBuffer(buffer);
+
+        } catch (error) {
+            console.error('[extractTextFromPdf] Error during PDF processing:', error);
+            reject(error);
+        }
+    });
 }
 
-export async function extractTextFromDocx(file: File): Promise<string> {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await (await getMammoth()).extractRawText({ arrayBuffer: arrayBuffer });
-    return result.value;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function extractTextFromDocx(_file: File): Promise<string> {
+    // placeholder for docx logic if implemented later
+    return 'DOCX parsing not implemented yet.';
 }
 
 export async function extractTextFromTxt(file: File): Promise<string> {
-    return await file.text();
+    const text = await file.text();
+    return text;
 }
 
 export async function processDocument(file: File): Promise<string> {
     const fileType = file.type;
+    console.log('[processDocument] Processing file:', file.name, 'Type:', fileType);
 
     if (fileType === 'application/pdf') {
         return await extractTextFromPdf(file);
@@ -53,6 +76,7 @@ export async function processDocument(file: File): Promise<string> {
     } else if (fileType === 'text/plain') {
         return await extractTextFromTxt(file);
     } else {
-        throw new Error('Unsupported file type for text extraction.');
+        console.error('[processDocument] Unsupported file type:', fileType);
+        throw new Error(`Unsupported file type: ${fileType}`);
     }
 }

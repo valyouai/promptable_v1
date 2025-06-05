@@ -1,121 +1,89 @@
-# System Architecture: Context-Aware Processing Agent
+# Promptable System Architecture (v1 - Post Kernel Hygiene Pass)
 
-This document details the design and integration of the Context-Aware Processing Agent, a critical component responsible for transforming raw extracted research insights into persona- and content-type-specific actionable system prompts.
+This document outlines the core architectural flow of the Promptable system after the Kernel Hygiene Pass.
 
-## 1. Problem Statement Revisited
-
-Initially, the system could extract general principles, methods, frameworks, and theories from research documents. However, these `ExtractedConcepts` were generic. The core problem was the lack of contextualization: the same raw insight needed to be reframed differently for a 'Creator' vs. an 'Educator' or a 'Researcher', depending on their selected content type (e.g., 'Visual Content Analysis' vs. 'Learning Theory Implementer').
-
-## 2. Solution: Context-Aware Processing Agent
-
-The Context-Aware Processing Agent is a logical layer within our existing API pipeline that addresses this contextualization challenge. It leverages advanced AI (OpenAI GPT-4) to dynamically adapt insights based on the user's specific context.
-
-### Key Responsibilities:
-
-- **Filtered Relevance**: Identify and retain only those insights from the raw extraction that are relevant to the specified `persona` and `contentType`.
-- **Contextual Framing**: Rephrase or explain insights in a manner that resonates with the chosen persona's domain and application.
-- **Actionability**: Transform insights into specific, practical applications or directives tailored for the selected use case.
-
-## 3. Integration into the System Pipeline
-
-This agent is integrated as a crucial intermediary step between the initial document analysis (raw extraction) and the final system prompt generation.
-
-**Enhanced Pipeline Flow:**
+## System Components and Flow
 
 ```mermaid
 graph TD
-    A[User Uploads Document] --> B[Document Processing & Raw Concept Extraction]
-    B --> C{Send to /api/generate-system-prompt}
-    C --> D[API Receives Raw Concepts + Persona/ContentType]
-    D --> E[Context-Aware Processing Agent (transformInsights)]
-    E --> F[Generate Tailored System Prompt]
-    F --> G[Display Tailored System Prompt]
+    subgraph "Document Upload Flow"
+        direction LR
+        A1["Client Uploads Document"] --> B1["API: /api/upload-document"];
+        B1 --> C1["Extracts Text (processDocument)"];
+        C1 --> D1["Save Text to File System<br/>(e.g., /uploads/{documentId}.txt)"];
+        D1 --> E1["Response: documentId"];
+    end
+
+    subgraph "Concept Extraction Flow"
+        direction LR
+        A2["Client Requests Extraction<br/>(with documentId)"] --> B2["API: /api/extract-concepts/{documentId}"];
+        B2 --> C2["ExtractionKernel.handle(documentId)"];
+        C2 --> D2_SD["StorageDriver.fetchDocument(documentId)"];
+        D2_SD --> E2_Text["Document Text"];
+        E2_Text --> F2_EE["ExtractionEngine.extract(documentText)<br/>(uses OpenAI)"];
+        F2_EE --> G2_Concepts["Raw ExtractedConcepts"];
+        G2_Concepts --> H2_QA["ExtractionQAAgent.validate(text, concepts)"];
+        H2_QA --> I2_ValidatedConcepts["Validated ExtractedConcepts"];
+        I2_ValidatedConcepts --> J2["Response: ExtractedConcepts"];
+    end
+
+    subgraph "System Prompt Generation Flow (Future Scope)"
+        direction LR
+        A3["Client Requests System Prompt<br/>(with ExtractedConcepts)"] --> B3["API: /api/generate-system-prompt"];
+        B3 --> C3["PromptComposer.generate(concepts)"];
+        C3 --> D3["Final System Prompt"];
+        D3 --> E3["Response: System Prompt"];
+    end
+
+    E1 -.-> A2;  // documentId from upload used in extraction request
+    J2 -.-> A3; // ExtractedConcepts from extraction used in prompt generation request
+
+    style A1 fill:#D5F5E3,stroke:#2ECC71
+    style B1 fill:#D5F5E3,stroke:#2ECC71
+    style C1 fill:#D5F5E3,stroke:#2ECC71
+    style D1 fill:#D5F5E3,stroke:#2ECC71
+    style E1 fill:#D5F5E3,stroke:#2ECC71
+
+    style A2 fill:#EBF5FB,stroke:#3498DB
+    style B2 fill:#EBF5FB,stroke:#3498DB
+    style C2 fill:#EBF5FB,stroke:#3498DB
+    style D2_SD fill:#EBF5FB,stroke:#3498DB
+    style E2_Text fill:#EBF5FB,stroke:#3498DB
+    style F2_EE fill:#EBF5FB,stroke:#3498DB
+    style G2_Concepts fill:#EBF5FB,stroke:#3498DB
+    style H2_QA fill:#EBF5FB,stroke:#3498DB
+    style I2_ValidatedConcepts fill:#EBF5FB,stroke:#3498DB
+    style J2 fill:#EBF5FB,stroke:#3498DB
+
+    style A3 fill:#FDEDEC,stroke:#E74C3C
+    style B3 fill:#FDEDEC,stroke:#E74C3C
+    style C3 fill:#FDEDEC,stroke:#E74C3C
+    style D3 fill:#FDEDEC,stroke:#E74C3C
+    style E3 fill:#FDEDEC,stroke:#E74C3C
 ```
 
-### Integration Points:
+## Key Components
 
-- **`src/app/creator/[contentType]/page.tsx`**: This client-side page now correctly passes the `persona` (hardcoded as 'creator' for this specific path segment) and `contentType` (from `useParams`) along with the `extractedConcepts` to the `/api/generate-system-prompt` endpoint.
-- **`src/app/api/generate-system-prompt/route.ts`**: This Next.js API route is the primary orchestrator.
-  1.  It receives the raw `extractedConcepts`, `persona`, and `contentType` from the frontend.
-  2.  It then calls the `transformInsights` function (our Context-Aware Processing Agent) with these parameters.
-  3.  The _transformed_ concepts (`TransformedConcepts`) are then passed to the `generateSystemPrompt` function.
-- **`lib/contextual-transformer.ts`**: This new utility file encapsulates the core logic of the Context-Aware Processing Agent.
-  - It defines the `transformInsights` asynchronous function.
-  - Inside this function, a meticulously crafted system and user prompt are constructed for the OpenAI API. These prompts instruct the AI to perform the contextual filtering, framing, and actionability transformation on the raw insights, considering the provided `persona` and `contentType`.
-  - The OpenAI model used (`gpt-4o-mini`) is chosen for its balance of capability and cost-effectiveness for this transformation task.
-  - It includes a fallback mechanism: if the OpenAI call fails, the raw concepts are returned to ensure system stability, albeit without the contextualization.
-- **`lib/prompt-templates.ts`**: The `generateSystemPrompt` function in this file has been updated to expect and utilize `TransformedConcepts` instead of the original `ExtractedConcepts`. This ensures that the final system prompt generation leverages the persona-specific insights directly.
+*   **API Routes**:
+    *   `/api/upload-document`: Handles document uploads, extracts text, saves it to the filesystem, and returns a `documentId`.
+    *   `/api/extract-concepts/{documentId}`: Retrieves a processed document by its ID and uses the `ExtractionKernel` to extract concepts.
+    *   `/api/generate-system-prompt` (Future): Will take extracted concepts and generate a final system prompt.
+*   **Extraction Kernel (`lib/extraction`)**:
+    *   `ExtractionKernel.ts`: Orchestrates the concept extraction process.
+    *   `StorageDriver.ts`: Fetches document text from the configured storage (currently local filesystem).
+    *   `ExtractionEngine.ts`: Uses an LLM (via `lib/openai.ts`) to extract structured concepts from document text.
+    *   `ExtractionQAAgent.ts`: Validates the concepts extracted by the `ExtractionEngine` using rule-based checks (and placeholder for future LLM-based QA).
+*   **Document Processing (`lib/document-processor.ts`)**: Handles text extraction from various document formats (PDF, DOCX, TXT).
+*   **Configuration (`lib/config.ts`)**: Centralizes application configuration, sourcing values from environment variables with fallbacks.
+*   **OpenAI Client (`lib/openai.ts`)**: Provides an abstraction for interacting with the OpenAI API, including a mock client for testing.
 
-## 4. Technical Implementation Details
+## Data Flow Summary
 
-### `lib/contextual-transformer.ts` (Core Logic)
-
-The `transformInsights` function is designed to be highly flexible and extensible. The prompts sent to OpenAI are structured to clearly define the AI's role and the desired output format (JSON). This allows for future refinements of the contextualization process by simply adjusting the prompt instructions.
-
-```typescript
-// Example snippet from lib/contextual-transformer.ts
-import openai from "./openai";
-import { ExtractedConcepts } from "@/types";
-import { Persona, ContentType } from "@/lib/prompt-templates";
-
-export interface TransformedConcepts {
-  principles: string[];
-  methods: string[];
-  frameworks: string[];
-  theories: string[];
-}
-
-export async function transformInsights(
-  rawConcepts: ExtractedConcepts,
-  persona: Persona,
-  contentType: ContentType
-): Promise<TransformedConcepts> {
-  const rawInsightsString = Object.entries(rawConcepts)
-    .map(
-      ([key, value]) =>
-        `### ${key.charAt(0).toUpperCase() + key.slice(1)}\n${value
-          .map((item: string) => `- ${item}`)
-          .join("\n")}`
-    )
-    .join("\n\n");
-
-  const systemMessage = `You are an AI assistant that specializes in taking raw, extracted research concepts and transforming them into actionable, context-specific insights. Your goal is to reframe the given principles, methods, frameworks, and theories to be highly relevant and applicable to a user with the persona of '${persona}' and focusing on the content type of '${contentType}'.\n\nProvide transformed insights that are filtered for relevance, contextualized for the persona/content type, and framed for actionability. If an insight is not relevant to the persona/content type, omit it. Do not invent new concepts, only reframe the existing ones.\n\nReturn the transformed concepts in a JSON object with the keys 'principles', 'methods', 'frameworks', and 'theories', where each value is an array of strings. Maintain the original categorization (principles, methods, etc.).\n\nExample Transformation (if persona is 'creator' and contentType is 'visual-content-analysis'):\nRaw Insight: "Sparse Priming Representation (SPR) as memory organization technique"\nTransformed Insight: "Use SPR principles to create memorable brand narratives by organizing visual elements that trigger recall"`;
-
-  const userMessage = `Transform the following raw insights for the '${persona}' persona and '${contentType}' content type:\n\n${rawInsightsString}\n\nEnsure the output is a valid JSON object matching the TransformedConcepts interface.`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemMessage },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.7,
-    });
-
-    const transformedText = response.choices[0].message.content;
-    if (!transformedText) {
-      throw new Error("OpenAI response content is empty.");
-    }
-    const transformedConcepts: TransformedConcepts =
-      JSON.parse(transformedText);
-    return transformedConcepts;
-  } catch (error) {
-    console.error("Error transforming insights with OpenAI:", error);
-    return rawConcepts;
-  }
-}
-```
-
-## 5. Potential Issues and Mitigations
-
-- **OpenAI API Failures/Timeouts**: The `try-catch` block in `transformInsights` provides a fallback to the raw concepts, preventing a complete system breakdown. Robust error logging is in place.
-- **Large Prompts**: The AI model (`gpt-4o-mini`) is selected for efficiency. However, extremely large input documents might generate very long raw insights, potentially hitting OpenAI token limits for the transformation prompt. This is a potential area for future optimization (e.g., chunking raw insights if they exceed a certain length before sending to the AI).
-- **Contextualization Quality**: The quality of transformed insights directly depends on the clarity and effectiveness of the prompts sent to OpenAI. Continuous refinement of these prompts based on testing and user feedback will be essential.
-
-## 6. Future Enhancements
-
-- **Caching**: Implement caching for transformed insights based on document ID, persona, and content type to reduce redundant OpenAI calls for repeated requests.
-- **UI Feedback**: Enhance frontend with more sophisticated feedback mechanisms (e.g., toast messages) for `System prompt copied to clipboard!` or `Failed to generate system prompt.` instead of simple `alert()` calls.
-- **Expanded Content Types/Personas**: As new content types and personas are added, ensure corresponding prompt adjustments and `generateSystemPrompt` logic can handle them seamlessly.
+1.  A client uploads a document. The `upload-document` API extracts its text and saves it to a file named with a generated `documentId`.
+2.  The client then requests concept extraction using the `documentId`.
+3.  The `extract-concepts` API calls the `ExtractionKernel`.
+4.  The `ExtractionKernel` uses the `StorageDriver` to fetch the document text.
+5.  The text is passed to the `ExtractionEngine`, which calls an LLM to get structured concepts.
+6.  These concepts are validated by the `ExtractionQAAgent`.
+7.  The (validated) concepts are returned to the client.
+8.  (Future) The client can then use these concepts to generate a system prompt via the `generate-system-prompt` API, which would likely involve a `PromptComposer` component.
