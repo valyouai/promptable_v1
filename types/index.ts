@@ -3,6 +3,15 @@ export interface ExtractedConcepts {
     methods: string[];
     frameworks: string[];
     theories: string[];
+
+    // New fields targeted by MultiPassRefinementAgent
+    'Research Objective'?: string;
+    'Methods'?: string; // Capital 'M', singular string, distinct from lowercase 'methods' array
+    'Dataset(s)'?: string;
+    'Key Findings'?: string;
+    'Limitations'?: string;
+    'Future Work'?: string;
+    'Applications'?: string;
 }
 
 export interface SystemPromptResult {
