@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateSystemPrompt, GenerationConfig, ContentType } from '@/lib/prompt-templates';
+import { generateSystemPrompt, Persona, ContentType, GenerationConfig } from '@/lib/prompt-templates';
 import { ExtractedConcepts } from '@/types';
 import { transformInsights, TransformedConcepts } from '@/lib/contextual-transformer';
 
@@ -15,11 +15,11 @@ export async function POST(request: Request) {
             extractedConcepts, // Assuming frontend passes this directly for MVP
         }: {
             documentId?: string;
-            persona: "creator" | "educator" | "researcher";
+            persona: Persona; // Use imported Persona type
             contentType: string; // Keep as string for request parsing
             focusAreas: string[];
-            complexityLevel: 'basic' | 'intermediate' | 'advanced';
-            outputStyle: 'directive' | 'conversational' | 'technical';
+            complexityLevel: GenerationConfig['complexityLevel']; // Use from imported GenerationConfig
+            outputStyle: GenerationConfig['outputStyle'];       // Use from imported GenerationConfig
             extractedConcepts: ExtractedConcepts;
         } = await request.json();
 

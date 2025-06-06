@@ -1,12 +1,20 @@
 import { ExtractedConcepts } from '@/types';
 import { Persona, ContentType } from '@/lib/prompt-templates';
 import openai from './openai'; // Import OpenAI client
+// import { encoding_for_model, TiktokenModel } from "@dqbd/tiktoken"; // Old import
+// import { TextDecoder } from 'util'; // No longer needed as tokenizer helper handles it
+import { countTokens, encodeText, decodeTokens } from '@/lib/tokenizer'; // New tokenizer helper
+
+export interface TransformedConceptItem {
+    raw_insight: string;
+    transformed_insight: string;
+}
 
 export interface TransformedConcepts {
-    principles: string[];
-    methods: string[];
-    frameworks: string[];
-    theories: string[];
+    principles: TransformedConceptItem[];
+    methods: TransformedConceptItem[];
+    frameworks: TransformedConceptItem[];
+    theories: TransformedConceptItem[];
 }
 
 // Define persona-specific context mappings
@@ -89,16 +97,57 @@ export async function transformInsights(
     console.log('[transformInsights] Received rawConcepts:', JSON.stringify(rawConcepts, null, 2));
     console.log(`[transformInsights] Persona: ${persona}, ContentType: ${contentType}`);
 
+    const isEmptyInput =
+        rawConcepts.principles.length === 0 &&
+        rawConcepts.methods.length === 0 &&
+        rawConcepts.frameworks.length === 0 &&
+        rawConcepts.theories.length === 0;
+
+    if (isEmptyInput) {
+        console.log('[transformInsights] Received empty input — returning empty transformed concepts.');
+        return {
+            principles: [],
+            methods: [],
+            frameworks: [],
+            theories: [],
+        };
+    }
+
     // Format raw insights for processing
     const rawInsightsString = Object.entries(rawConcepts)
         .map(([key, value]) => `### ${key.charAt(0).toUpperCase() + key.slice(1)}\n${value.map((item: string) => `- ${item}`).join('\n')}`)
         .join('\n\n');
 
+    // --- Token budget safeguard for rawInsightsString ---
+    const maxTokensForInsights = 12000; // Budget for the raw insights part of the prompt
+    let safeRawInsightsString = rawInsightsString;
+    const insightsModelName = "gpt-4o-mini"; // Model used in this specific function
+
+    try {
+        const insightsTokenCount = countTokens(rawInsightsString, insightsModelName);
+
+        if (insightsTokenCount > maxTokensForInsights) {
+            console.warn(`[transformInsights] RawInsightsString with ${insightsTokenCount} tokens exceeds budget of ${maxTokensForInsights}. Truncating.`);
+            const encodedInsights = encodeText(rawInsightsString, insightsModelName);
+            const truncatedEncodedInsights = encodedInsights.slice(0, maxTokensForInsights);
+            safeRawInsightsString = decodeTokens(truncatedEncodedInsights, insightsModelName);
+            console.log(`[transformInsights] Truncated rawInsightsString to approx. ${maxTokensForInsights} tokens. New length: ${safeRawInsightsString.length} chars.`);
+        } else {
+            console.log(`[transformInsights] RawInsightsString with ${insightsTokenCount} tokens is within budget. No truncation needed.`);
+        }
+    } catch (err) {
+        console.error('[transformInsights] Error during token budgeting for rawInsightsString. Using untruncated version. Error:', err);
+        // safeRawInsightsString remains rawInsightsString (initialized above)
+        // insightsTokenCount = -1; // Indicate budgeting failure - this variable is not used elsewhere after this block
+    }
+    // encoding.free() is no longer needed
+    // --- End token budget safeguard ---
+
     // Build persona-specific system message
     const systemMessage = buildPersonaSpecificPrompt(persona, contentType);
 
-    // Create user message with examples based on persona
-    const userMessage = `Transform the following raw research insights for a ${persona} working on ${contentType}:\n\n${rawInsightsString}\n\nReturn ONLY a valid JSON object with keys 'principles', 'methods', 'frameworks', and 'theories', where each value is an array of transformed insights.\n\nExample transformation pattern for ${persona}:\n${getExampleTransformation(persona, contentType)}`;
+    // Create user message with examples based on persona, using the safeRawInsightsString
+    const userMessage = `Transform the following raw research insights for a ${persona} working on ${contentType}:\n\n${safeRawInsightsString}\n\nReturn ONLY a valid JSON object with keys 'principles', 'methods', 'frameworks', and 'theories', where each value is an array of transformed insights.\n\nExample transformation pattern for ${persona}:\n${getExampleTransformation(persona, contentType)}`;
 
     console.log('[transformInsights] System Message for OpenAI:', systemMessage);
     console.log('[transformInsights] User Message for OpenAI:', userMessage);
@@ -129,17 +178,28 @@ export async function transformInsights(
         // Validate that we have meaningful content
         if (!hasValidContent(transformedConcepts)) {
             console.warn("[transformInsights] Transformed concepts appear to be empty or invalid based on hasValidContent check.");
-            console.log("[transformInsights] Falling back to rawConcepts due to empty/invalid transformed content.");
-            return rawConcepts;
+            console.log("[transformInsights] Falling back to mapped rawConcepts due to empty/invalid transformed content.");
+            // Map rawConcepts to TransformedConcepts structure for fallback, using updated property names
+            return {
+                principles: rawConcepts.principles.map(p => ({ raw_insight: p, transformed_insight: "[Transformation N/A - Fallback]" })),
+                methods: rawConcepts.methods.map(m => ({ raw_insight: m, transformed_insight: "[Transformation N/A - Fallback]" })),
+                frameworks: rawConcepts.frameworks.map(f => ({ raw_insight: f, transformed_insight: "[Transformation N/A - Fallback]" })),
+                theories: rawConcepts.theories.map(t => ({ raw_insight: t, transformed_insight: "[Transformation N/A - Fallback]" })),
+            };
         }
 
         console.log("[transformInsights] Successfully transformed concepts.");
         return transformedConcepts;
     } catch (error) {
         console.error('[transformInsights] Error during OpenAI call or processing:', error);
-        console.log("[transformInsights] Falling back to rawConcepts due to error.");
-        // Fallback to raw concepts to ensure system stability
-        return rawConcepts;
+        console.log("[transformInsights] Falling back to mapped rawConcepts due to error.");
+        // Fallback to mapped raw concepts to ensure system stability and type conformity, using updated property names
+        return {
+            principles: rawConcepts.principles.map(p => ({ raw_insight: p, transformed_insight: "[Transformation Failed - Error]" })),
+            methods: rawConcepts.methods.map(m => ({ raw_insight: m, transformed_insight: "[Transformation Failed - Error]" })),
+            frameworks: rawConcepts.frameworks.map(f => ({ raw_insight: f, transformed_insight: "[Transformation Failed - Error]" })),
+            theories: rawConcepts.theories.map(t => ({ raw_insight: t, transformed_insight: "[Transformation Failed - Error]" })),
+        };
     }
 }
 

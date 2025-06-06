@@ -10,7 +10,12 @@
     "lint": "next lint",
     "test": "tsx --env-file .env.test test/persona-validation.ts",
     "test:kernel-integration": "tsx --env-file .env.test test/kernel.integration.test.ts",
-    "test:all": "npm run test && npm run test:kernel-integration",
+    "test:parser": "tsx --env-file .env.test test/lib/extraction/parser-engine.test.ts",
+    "test:api:upload": "tsx --env-file .env.test test/api/upload-document.test.ts",
+    "test:api:extract": "tsx --env-file .env.test test/api/extract-concepts.test.ts",
+    "test:api:generate": "tsx --env-file .env.test test/api/generate-system-prompt.test.ts",
+    "test:api": "npm run test:api:upload && npm run test:api:extract && npm run test:api:generate",
+    "test:all": "npm run test && npm run test:kernel-integration && npm run test:parser && npm run test:api",
     "validate": "npm run build && echo '✅ Build successful!'",
     "clean": "rm -rf .next node_modules package-lock.json && npm install && npm run build"
   },
@@ -21,7 +26,8 @@
     "openai": "^5.1.0",
     "pdf2json": "^3.1.6",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tiktoken-node": "^0.0.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -33,6 +39,7 @@
     "@types/sinon": "^17.0.4",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
+    "node-mocks-http": "^1.17.2",
     "sinon": "^20.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.19.4",

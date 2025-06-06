@@ -1,7 +1,7 @@
 import type { ExtractedConcepts } from '@/types';
-import { StorageDriver } from './StorageDriver';
-import { ExtractionEngine } from './ExtractionEngine';
-import { ExtractionQAAgent } from './ExtractionQAAgent';
+import { StorageDriver } from '@/lib/extraction/StorageDriver';
+import { ExtractionEngine } from '@/server/extraction/ExtractionEngine';
+import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
 
 export class ExtractionKernel {
     static async handle(documentId: string): Promise<ExtractedConcepts> {

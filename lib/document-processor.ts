@@ -1,4 +1,5 @@
 import PDFParser from 'pdf2json';
+import mammoth from 'mammoth';
 
 export async function extractTextFromPdf(file: File): Promise<string> {
     console.log('[extractTextFromPdf] Received file:', file.name, 'Type:', file.type, 'Size:', file.size);
@@ -55,9 +56,29 @@ export async function extractTextFromPdf(file: File): Promise<string> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function extractTextFromDocx(_file: File): Promise<string> {
-    // placeholder for docx logic if implemented later
-    return 'DOCX parsing not implemented yet.';
+export async function extractTextFromDocx(file: File): Promise<string> {
+    console.log('[extractTextFromDocx] Received file:', file.name, 'Type:', file.type, 'Size:', file.size);
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        console.log('[extractTextFromDocx] Converted to ArrayBuffer. Length:', arrayBuffer.byteLength);
+
+        // Convert ArrayBuffer to Node.js Buffer
+        const nodeBuffer = Buffer.from(arrayBuffer);
+        console.log('[extractTextFromDocx] Converted to Node.js Buffer. Length:', nodeBuffer.length);
+
+        // Pass the Node.js Buffer to mammoth
+        const result = await mammoth.extractRawText({ buffer: nodeBuffer });
+        const text = result.value; // The raw text
+
+        if (result.messages && result.messages.length > 0) {
+            console.warn('[extractTextFromDocx] Messages during DOCX parsing:', result.messages);
+        }
+        console.log('[extractTextFromDocx] DOCX parsed successfully. Text length:', text.length);
+        return text;
+    } catch (error) {
+        console.error('[extractTextFromDocx] Error during DOCX processing:', error);
+        throw new Error(`DOCX parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 export async function extractTextFromTxt(file: File): Promise<string> {

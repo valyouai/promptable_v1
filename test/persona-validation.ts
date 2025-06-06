@@ -6,6 +6,7 @@ import { transformInsights } from '@/lib/contextual-transformer';
 import { generateSystemPrompt } from '@/lib/prompt-templates';
 import type { Persona, ContentType } from '@/lib/prompt-templates';
 import type { ExtractedConcepts } from '@/types';
+import type { TransformedConceptItem } from '@/lib/contextual-transformer';
 
 // Mock extracted concepts for testing
 const mockExtractedConcepts: ExtractedConcepts = {
@@ -107,7 +108,7 @@ export async function validatePersonaSystem(
 
                 // Count transformed concepts
                 const conceptsCount = Object.values(transformedConcepts)
-                    .reduce((acc: number, arr: string[]) => acc + arr.length, 0);
+                    .reduce((acc: number, arr: TransformedConceptItem[]) => acc + arr.length, 0);
 
                 // Test system prompt generation
                 const systemPrompt = generateSystemPrompt(

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ExtractionKernel } from '@/lib/extraction/ExtractionKernel';
+import { ExtractionKernel } from '@/server/extraction/ExtractionKernel';
 
 export async function GET(
     request: NextRequest,

@@ -1,4 +1,4 @@
-import { ExtractionKernel } from '@/lib/extraction/ExtractionKernel';
+import { ExtractionKernel } from '@/server/extraction/ExtractionKernel';
 import type { ExtractedConcepts } from '@/types';
 import fs from 'fs/promises';
 import path from 'path';
@@ -40,15 +40,15 @@ async function runKernelIntegrationTest() {
         if (typeof result.frameworks === 'undefined' || !Array.isArray(result.frameworks)) throw new Error('AssertionError: Result missing or invalid frameworks');
         if (typeof result.theories === 'undefined' || !Array.isArray(result.theories)) throw new Error('AssertionError: Result missing or invalid theories');
 
-        // Assert content based on lib/openai.ts mock for "contextual" keyword
-        // The mock returns specific strings for principles and methods when triggered correctly
-        if (!result.principles.some(p => typeof p === 'string' && p.startsWith('Mocked: Transformed principle'))) {
+        // Assert content based on lib/openai.ts mock for "expert academic researcher" system prompt
+        // The mock returns specific strings for principles and methods when triggered by ExtractionEngine
+        if (!result.principles.some(p => typeof p === 'string' && p.startsWith('Mocked: Extracted principle'))) {
             console.error('Current principles:', result.principles)
-            throw new Error('AssertionError: Principles did not match expected mock output. Ensure OPENAI_API_KEY=test-key in .env.test');
+            throw new Error('AssertionError: Principles did not match expected mock output from ExtractionEngine. Ensure OPENAI_API_KEY=test-key in .env.test');
         }
-        if (!result.methods.some(m => typeof m === 'string' && m.startsWith('Mocked: Testing methodology'))) {
+        if (!result.methods.some(m => typeof m === 'string' && m.startsWith('Mocked: Extracted method'))) {
             console.error('Current methods:', result.methods)
-            throw new Error('AssertionError: Methods did not match expected mock output. Ensure OPENAI_API_KEY=test-key in .env.test');
+            throw new Error('AssertionError: Methods did not match expected mock output from ExtractionEngine. Ensure OPENAI_API_KEY=test-key in .env.test');
         }
 
         // Check if QA agent added any issues for this clean input (it shouldn't for missing categories)

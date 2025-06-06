@@ -1,7 +1,19 @@
 // import openai from './openai';
-import { TransformedConcepts } from "./contextual-transformer";
+import { TransformedConcepts, TransformedConceptItem } from "./contextual-transformer";
 
-// export const basePromptTemplate = `...`;
+// Helper function to normalize concept arrays to TransformedConceptItem[]
+function normalizeConceptArray(values: (string | TransformedConceptItem)[]): TransformedConceptItem[] {
+    return values.map(item =>
+        typeof item === 'string'
+            ? { raw_insight: item, transformed_insight: item }
+            : item
+    );
+}
+
+// Helper function to format concept arrays, now strictly expecting TransformedConceptItem arrays
+function formatConceptArray(values: TransformedConceptItem[]): string {
+    return values.map(item => `• ${item.transformed_insight}`).join('\n');
+}
 
 export type Persona = "creator" | "educator" | "researcher";
 
@@ -201,12 +213,13 @@ export function generateSystemPrompt(
     // Destructure config for use in prompt
     const { focusAreas, complexityLevel, outputStyle } = config;
 
-    // Format the transformed concepts for inclusion in the prompt
     const formattedConcepts = Object.entries(transformedConcepts)
-        .filter(([_key, values]) => values.length > 0) // eslint-disable-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .filter(([_key, values]) => values.length > 0) // _key is intentionally unused here
         .map(([key, values]) => {
             const formattedKey = key.charAt(0).toUpperCase() + key.slice(1);
-            const formattedValues = values.map((item: string) => `• ${item}`).join('\n');
+            // Use the robust formatConceptArray helper
+            const formattedValues = formatConceptArray(normalizeConceptArray(values));
             return `**${formattedKey}:**\n${formattedValues}`;
         })
         .join('\n\n');

@@ -1,12 +1,12 @@
-import { ExtractionKernel } from '@/lib/extraction/ExtractionKernel';
+import { ExtractionKernel } from '@/server/extraction/ExtractionKernel';
 import { StorageDriver } from '@/lib/extraction/StorageDriver';
-import { ExtractionEngine } from '@/lib/extraction/ExtractionEngine';
+import { ExtractionEngine } from '@/server/extraction/ExtractionEngine';
 import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
 import type { ExtractedConcepts, QAValidationResult } from '@/types';
 
 // Mock the dependencies
 jest.mock('@/lib/extraction/StorageDriver');
-jest.mock('@/lib/extraction/ExtractionEngine');
+jest.mock('@/server/extraction/ExtractionEngine');
 jest.mock('@/lib/extraction/ExtractionQAAgent');
 
 describe('ExtractionKernel', () => {

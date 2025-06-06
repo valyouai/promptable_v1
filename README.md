@@ -59,6 +59,12 @@ To run the test suite, use the following command:
 npm run test
 ```
 
+To run all available tests, including integration tests, use:
+
+```bash
+npm run test:all
+```
+
 This command executes the test scripts defined in `package.json` using `tsx`, a TypeScript execution tool.
 
 ### OpenAI API Mocking for Tests
@@ -84,8 +90,9 @@ For tests involving interactions with the OpenAI API (specifically in `test/pers
 
 3.  **Test Script Configuration:**
     - The `test` script in `package.json` (`"test": "tsx --env-file .env.test test/persona-validation.ts"`) explicitly tells `tsx` to load environment variables from `.env.test` before running the tests.
+    - The `test:all` script in `package.json` (`"test:all": "npm run test && npm run test:kernel-integration"`) ensures both persona validation and kernel integration tests are run using the `.env.test` configurations.
 
-This setup ensures that `npm run test` automatically uses the mocked OpenAI client, allowing for isolated and consistent testing of your application's logic.
+This setup ensures that `npm run test` and `npm run test:all` automatically use the mocked OpenAI client, allowing for isolated and consistent testing of your application's logic.
 
 ## 📚 Learn More
 
