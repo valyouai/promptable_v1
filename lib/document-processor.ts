@@ -1,58 +1,53 @@
-import PDFParser from 'pdf2json';
 import mammoth from 'mammoth';
+import FormData from 'form-data';
+import fetch from 'node-fetch';
+
+// PDF Microservice URL - Configurable through environment variables, with a default for local development
+const PDF_EXTRACTION_SERVICE_URL = process.env.PDF_EXTRACTION_SERVICE_URL || 'http://localhost:7000/api/extract-pdf-text';
 
 export async function extractTextFromPdf(file: File): Promise<string> {
-    console.log('[extractTextFromPdf] Received file:', file.name, 'Type:', file.type, 'Size:', file.size);
+    console.log(`[extractTextFromPdf] Received file: ${file.name}, Type: ${file.type}, Size: ${file.size}. Sending to microservice at ${PDF_EXTRACTION_SERVICE_URL}.`);
 
-    return new Promise(async (resolve, reject) => {
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            console.log('[extractTextFromPdf] Converted to Buffer. Length:', buffer.length);
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-            const pdfParser = new PDFParser();
-
-            pdfParser.on('pdfParser_dataError', (errData: Record<'parserError', Error>) => {
-                console.error('[extractTextFromPdf] PDF parsing error:', errData.parserError);
-                reject(new Error(`PDF parsing failed: ${errData.parserError.message}`));
-            });
-
-            pdfParser.on('pdfParser_dataReady', (pdfData: { Pages: Array<{ Texts: Array<{ R: Array<{ T: string }> }> }> }) => {
-                console.log('[extractTextFromPdf] PDF parsed successfully');
-
-                // Extract text from all pages
-                let fullText = '';
-
-                if (pdfData.Pages) {
-                    pdfData.Pages.forEach((page, pageIndex: number) => {
-                        console.log(`[extractTextFromPdf] Processing page ${pageIndex + 1}/${pdfData.Pages.length}`);
-
-                        if (page.Texts) {
-                            page.Texts.forEach((text) => {
-                                if (text.R && text.R[0] && text.R[0].T) {
-                                    // Decode URI component to get actual text
-                                    const decodedText = decodeURIComponent(text.R[0].T);
-                                    fullText += decodedText + ' ';
-                                }
-                            });
-                        }
-                        fullText += '\n';
-                    });
-                }
-
-                console.log('[extractTextFromPdf] Text extraction complete. Total length:', fullText.length);
-                resolve(fullText.trim());
-            });
-
-            // Parse the PDF buffer
-            console.log('[extractTextFromPdf] Starting PDF parsing...');
-            pdfParser.parseBuffer(buffer);
-
-        } catch (error) {
-            console.error('[extractTextFromPdf] Error during PDF processing:', error);
-            reject(error);
-        }
+    const formData = new FormData();
+    formData.append('file', buffer, {
+        filename: file.name,
+        contentType: file.type || 'application/pdf',
     });
+
+    try {
+        const response = await fetch(PDF_EXTRACTION_SERVICE_URL, {
+            method: 'POST',
+            body: formData as any,
+            headers: formData.getHeaders(),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            const errorMessage = `PDF extraction microservice failed with status: ${response.status} ${response.statusText} - ${errorBody}`;
+            console.error(`[extractTextFromPdf] Error from microservice: ${errorMessage}`);
+            throw new Error(errorMessage);
+        }
+
+        const successBody = await response.json();
+        if (typeof successBody.text !== 'string') {
+            console.error('[extractTextFromPdf] Microservice response did not contain a valid text string.', successBody);
+            throw new Error('Invalid response format from PDF extraction microservice.');
+        }
+
+        console.log('[extractTextFromPdf] Text successfully extracted by microservice. Length:', successBody.text.length);
+        return successBody.text;
+
+    } catch (error: unknown) {
+        let errorMessage = 'Unknown error during PDF microservice call';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        console.error(`[extractTextFromPdf] Error calling PDF extraction microservice: ${errorMessage}`, error);
+        throw new Error(`Failed to extract text from PDF via microservice: ${errorMessage}`);
+    }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -62,13 +57,11 @@ export async function extractTextFromDocx(file: File): Promise<string> {
         const arrayBuffer = await file.arrayBuffer();
         console.log('[extractTextFromDocx] Converted to ArrayBuffer. Length:', arrayBuffer.byteLength);
 
-        // Convert ArrayBuffer to Node.js Buffer
         const nodeBuffer = Buffer.from(arrayBuffer);
         console.log('[extractTextFromDocx] Converted to Node.js Buffer. Length:', nodeBuffer.length);
 
-        // Pass the Node.js Buffer to mammoth
         const result = await mammoth.extractRawText({ buffer: nodeBuffer });
-        const text = result.value; // The raw text
+        const text = result.value;
 
         if (result.messages && result.messages.length > 0) {
             console.warn('[extractTextFromDocx] Messages during DOCX parsing:', result.messages);

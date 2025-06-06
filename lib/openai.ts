@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 
 // Check if we're in test mode
-const isTestMode = process.env.NODE_ENV === 'test' || process.env.OPENAI_API_KEY === 'test-key';
+// Allow overriding to force live OpenAI client for specific test runs (e.g., KCCD harness)
+const isTestMode = (process.env.NODE_ENV === 'test' || process.env.OPENAI_API_KEY === 'test-key') && process.env.FORCE_LIVE_OPENAI !== 'true';
 
 // Mock OpenAI client for testing
 const mockOpenAI = {
