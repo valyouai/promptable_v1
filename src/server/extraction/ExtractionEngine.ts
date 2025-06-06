@@ -1,6 +1,9 @@
 import { PromptCompiler } from './PromptCompiler';
 import { SchemaActivator } from './SchemaActivator';
 import { PatternNormalizer } from './PatternNormalizer';
+import { AmbiguityCatcher } from './AmbiguityCatcher';
+import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
+import { ExtractedConcepts } from '@/types';
 import openaiClient from '@/lib/openai';
 import { OpenAI } from 'openai'; // Import OpenAI namespace for types
 import { config } from '@/lib/config';
@@ -9,7 +12,7 @@ import { encodeText, decodeTokens, countTokens } from '@/lib/tokenizer';
 // Obsolete type definitions like LLMResponseFormat and DEFAULT_EMPTY_CONCEPTS are removed.
 
 export class ExtractionEngine {
-    static async extract(documentText: string, context: any): Promise<Record<string, any>> {
+    static async extract(documentText: string, context: any): Promise<ExtractedConcepts> {
         // Compile new Phase 4 system prompt
         const compiledPrompt = PromptCompiler.compile(context);
 
@@ -20,10 +23,17 @@ export class ExtractionEngine {
         const normalized = PatternNormalizer.normalize(rawExtraction);
         const schemaAligned = SchemaActivator.activate(normalized);
 
-        // Pass to QA layer (assumed existing)
-        // TODO: Integrate ExtractionQAAgent.validate(schemaAligned) when ExtractionQAAgent is available.
-        // For now, schemaAligned is considered the final output.
-        const finalOutput = schemaAligned;
+        // Phase 4B Injection — Soft ambiguity detection
+        const ambiguities = AmbiguityCatcher.detectAmbiguities(schemaAligned);
+        if (ambiguities.length > 0) {
+            console.warn('Ambiguity warnings:', ambiguities);
+        }
+
+        // Pass to QA layer
+        const qaResult = await ExtractionQAAgent.validate(documentText, schemaAligned as ExtractedConcepts);
+
+        // Use validatedConcepts from qaResult
+        const finalOutput = qaResult.validatedConcepts;
 
         return finalOutput;
     }
