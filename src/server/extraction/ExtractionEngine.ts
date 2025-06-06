@@ -5,6 +5,12 @@ import { AmbiguityCatcher } from './AmbiguityCatcher';
 import { MultiPassRefinementAgent } from './MultiPassRefinementAgent';
 import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
 import { ExtractedConcepts } from '@/types';
+import { OpenAIAdapter } from '../llm/OpenAIAdapter';
+
+// Helper type guard to check for Record<string, unknown>
+function isRecordStringUnknown(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 // Obsolete type definitions like LLMResponseFormat and DEFAULT_EMPTY_CONCEPTS are removed.
 
@@ -39,13 +45,31 @@ export class ExtractionEngine {
     }
 
     private static async callLLM(prompt: string, documentText: string): Promise<Record<string, any>> {
-        // Replace this with your actual LLM call adapter
-        // @ts-expect-error // Ignoring someLLMAPI as it's a placeholder
-        const llmResponse = await someLLMAPI.call({
+        const llmResponseUnknown: unknown = await OpenAIAdapter.call({
             systemPrompt: prompt,
             userPrompt: documentText
         });
 
-        return llmResponse.output;
+        // Check for OpenAIAdapter's fallback structure: { output: string }
+        if (
+            typeof llmResponseUnknown === 'object' &&
+            llmResponseUnknown !== null &&
+            'output' in llmResponseUnknown &&
+            typeof (llmResponseUnknown as { output: unknown }).output === 'string' &&
+            Object.keys(llmResponseUnknown).length === 1
+        ) {
+            console.warn('[ExtractionEngine.callLLM] LLM response was not valid JSON and matched fallback. Content:', (llmResponseUnknown as { output: string }).output);
+            return {};
+        }
+
+        // Check if it's a general record (expected for successful JSON parse of an object)
+        if (isRecordStringUnknown(llmResponseUnknown)) {
+            // This cast aligns with the method's declared return type Promise<Record<string, any>>.
+            // The 'any' here is inherited from that signature.
+            return llmResponseUnknown as Record<string, any>;
+        }
+
+        console.warn('[ExtractionEngine.callLLM] LLM response was not the expected Record<string, any> structure after parsing. Received:', llmResponseUnknown);
+        return {};
     }
 } 

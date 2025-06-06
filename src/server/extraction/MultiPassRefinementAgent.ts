@@ -1,6 +1,7 @@
 // src/server/extraction/MultiPassRefinementAgent.ts
 
 import { ExtractedConcepts } from '@/types';
+import { OpenAIAdapter } from '../llm/OpenAIAdapter';
 
 type ReinforceableField =
     | 'Research Objective'
@@ -39,12 +40,14 @@ export class MultiPassRefinementAgent {
     private static async requestFieldRepair(field: ReinforceableField, documentText: string): Promise<string> {
         const systemPrompt = `You are an academic extraction assistant. The following research paper text may be missing the "${field}" field. Based on the document content, attempt to generate a best-effort extraction for "${field}". If truly unavailable, return: "Not explicitly mentioned."`;
 
-        // Replace this with your actual LLM call adapter
-        const llmResponse = await someLLMAPI.call({
+        // Using OpenAIAdapter
+        const llmResponse = await OpenAIAdapter.call({
             systemPrompt,
             userPrompt: documentText
         });
 
-        return llmResponse.output?.[field] ?? "Not explicitly mentioned.";
+        // llmResponse from OpenAIAdapter (when not JSON) is { output: string }
+        // The string itself is the direct answer from the LLM.
+        return llmResponse.output ?? "Not explicitly mentioned.";
     }
 } 
