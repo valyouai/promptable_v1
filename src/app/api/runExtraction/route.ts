@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ExtractionOrchestrator } from '@/server/llm/ExtractionOrchestrator';
-import { parseMultipartFormData } from '@/server/utils/parseMultipart';
+// import { parseMultipartFormData } from '@/server/utils/parseMultipart'; // Removed deleted import
 import type { PersonaType } from '@/server/llm/RelevanceFilteringAgent';
 
 const ALLOWED_PERSONAS: PersonaType[] = ['educator', 'researcher', 'creator'];
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
 
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const documentText = await parseMultipartFormData(file.name, buffer);
+        // const documentText = await parseMultipartFormData(file.name, buffer); // Replaced with direct buffer to string conversion
+        const documentText = buffer.toString('utf-8'); // Assuming UTF-8 encoding for the uploaded file content
 
         const cognitiveKernelResult = await ExtractionOrchestrator.runExtraction(documentText, validatedPersona);
 
