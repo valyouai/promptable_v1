@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "contractLock": {
+    "frozenFiles": [
+      "types/index.ts",
+      "src/server/llm/ExtractionOrchestrator.ts",
+      "src/server/llm/OrchestrationController.ts",
+      "src/server/llm/AbductiveHypothesisAgent.ts",
+      "src/server/llm/AnalogicalMappingAgent.ts",
+      "src/server/llm/GapDetectionAgent.ts",
+      "src/server/llm/RelevanceFilteringAgent.ts",
+      "src/app/api/runExtraction/route.ts",
+      "tests/server/llm/Phase15CUnifiedKernelHarness.test.ts"
+    ],
+    "version": "KERNEL_V1.0_LOCKED"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,13 +25,13 @@
     "test": "tsx --env-file .env.test test/persona-validation.ts",
     "test:kernel-integration": "tsx --env-file .env.test test/kernel.integration.test.ts",
     "test:kernel": "npx tsx tests/server/llm/Phase15CUnifiedKernelHarness.test.ts",
+    "ci:verify-kernel": "npm run test:kernel",
     "test:parser": "tsx --env-file .env.test test/lib/extraction/parser-engine.test.ts",
     "test:api:upload": "tsx --env-file .env.test test/api/upload-document.test.ts",
     "test:api:extract": "tsx --env-file .env.test test/api/extract-concepts.test.ts",
     "test:api:generate": "tsx --env-file .env.test test/api/generate-system-prompt.test.ts",
     "test:api": "npm run test:api:upload && npm run test:api:extract && npm run test:api:generate",
     "test:all": "npm run test && npm run test:kernel-integration && npm run test:parser && npm run test:api",
-    "phase13e:test": "tsx src/server/tests/phase13e/TestHarnessRunner.ts",
     "validate": "npm run build && echo '✅ Build successful!'",
     "clean": "rm -rf .next node_modules package-lock.json && npm install && npm run build"
   },

@@ -6,12 +6,12 @@ import DocumentUploader from '@/components/DocumentUploader';
 import AnalysisPreview from '@/components/AnalysisPreview';
 import SystemPromptGenerator from '@/components/SystemPromptGenerator';
 import ExportOptions from '@/components/ExportOptions';
-import { ExtractedConcepts, SystemPromptResult, ExtractionResult } from '@/types';
+import { ExtractedConcepts, SystemPromptResult, ExtractionResult, CognitiveKernelResult } from '@/types';
 import { Persona } from '@/lib/prompt-templates';
 
 const GenerationPage: React.FC = ({ }) => {
   const params = useParams();
-  const persona: Persona = 'researcher'; // MODIFIED: Set persona to 'researcher'
+  const persona: Persona = 'researcher'; // Static persona for this page
   const contentType = params.contentType as string; 
   const [extractedConcepts, setExtractedConcepts] = React.useState<ExtractedConcepts | null>(null);
   const [isProcessingDocument, setIsProcessingDocument] = React.useState<boolean>(false);
@@ -41,6 +41,7 @@ const GenerationPage: React.FC = ({ }) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('persona', persona); // Ensure static persona is appended
 
       const response = await fetch('/api/runExtraction', {
         method: 'POST',
@@ -57,18 +58,32 @@ const GenerationPage: React.FC = ({ }) => {
         }
         console.error('Extraction failed:', errorDetails);
         alert(`Error: ${errorDetails}`); 
+        // Reset states on failure
+        setExtractedConcepts(null);
+        setFullExtractionResult(null);
+        setDocumentId('');
+        // setIsProcessingDocument(false); // Handled in finally
         return; 
       }
 
-      const extractionResult: ExtractionResult = await response.json();
-      console.log('Extraction Complete:', extractionResult);
+      // Expect CognitiveKernelResult
+      const cognitiveKernelResult = await response.json() as CognitiveKernelResult;
+      console.log('Full Kernel Response (Researcher Page):', cognitiveKernelResult); 
 
-      setExtractedConcepts(extractionResult.finalConcepts); 
-      setFullExtractionResult(extractionResult); 
-      setDocumentId(extractionResult.documentId ?? ''); 
+      if (cognitiveKernelResult && cognitiveKernelResult.extractionResult) {
+        setExtractedConcepts(cognitiveKernelResult.extractionResult.finalConcepts); 
+        setFullExtractionResult(cognitiveKernelResult.extractionResult); 
+        setDocumentId(cognitiveKernelResult.extractionResult.documentId ?? ''); 
+      } else {
+        console.error('Extraction response not in expected CognitiveKernelResult format (Researcher Page):', cognitiveKernelResult);
+        alert('Error: Received an unexpected response format from the server.');
+        setExtractedConcepts(null);
+        setFullExtractionResult(null);
+        setDocumentId('');
+      }
 
     } catch (err) {
-      console.error('Error during document upload and extraction:', err);
+      console.error('Error during document upload and extraction (Researcher Page):', err);
       let errorMessage = "An unknown error occurred.";
       if (err instanceof Error) {
         errorMessage = err.message;
@@ -76,6 +91,7 @@ const GenerationPage: React.FC = ({ }) => {
       alert(`Error: ${errorMessage}`);
       setExtractedConcepts(null);
       setFullExtractionResult(null);
+      setDocumentId('');
     } finally {
       setIsProcessingDocument(false);
     }

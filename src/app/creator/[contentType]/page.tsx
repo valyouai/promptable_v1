@@ -6,7 +6,7 @@ import DocumentUploader from '@/components/DocumentUploader';
 import AnalysisPreview from '@/components/AnalysisPreview';
 import SystemPromptGenerator from '@/components/SystemPromptGenerator';
 import ExportOptions from '@/components/ExportOptions';
-import { ExtractedConcepts, SystemPromptResult, ExtractionResult } from '@/types';
+import { ExtractedConcepts, SystemPromptResult, ExtractionResult, CognitiveKernelResult } from '@/types';
 import { Persona } from '@/lib/prompt-templates';
 
 // interface PageProps {
@@ -15,7 +15,7 @@ import { Persona } from '@/lib/prompt-templates';
 
 const GenerationPage: React.FC = ({ }) => {
   const params = useParams();
-  const persona: Persona = 'creator'; // Hardcode persona as 'creator'
+  const persona: Persona = 'creator'; // Static persona for this page
   const contentType = params.contentType as string; // Access contentType via hook and cast to string
   // const [uploadedFile, setUploadedFile] = React.useState<File | null>(null); // Removed as not currently used
   const [extractedConcepts, setExtractedConcepts] = React.useState<ExtractedConcepts | null>(null);
@@ -26,72 +26,76 @@ const GenerationPage: React.FC = ({ }) => {
   const [fullExtractionResult, setFullExtractionResult] = React.useState<ExtractionResult | null>(null); // New state variable
 
   React.useEffect(() => {
-    // In a real application, you might fetch initial data or document status here
-    // For MVP, we're assuming a fresh start or relying on user interaction.
+    // console.log('[Creator Page useEffect] persona, contentType updated:', persona, contentType);
   }, [persona, contentType]);
 
   React.useEffect(() => {
-    // Effect to log when generatedPromptResult changes
     console.log('[Creator Page useEffect] generatedPromptResult state updated:', generatedPromptResult);
     if (generatedPromptResult) {
       console.log('[Creator Page useEffect] systemPrompt from state (first 200 chars):', generatedPromptResult.systemPrompt?.substring(0, 200));
       console.log('[Creator Page useEffect] systemPrompt from state total length:', generatedPromptResult.systemPrompt?.length);
     }
-  }, [generatedPromptResult]); // Dependency array ensures this runs when generatedPromptResult changes
+  }, [generatedPromptResult]); 
 
   const handleDocumentUpload = async (file: File) => {
     setIsProcessingDocument(true);
-    setExtractedConcepts(null); // Reset previous concepts
-    setFullExtractionResult(null); // Reset previous full result
-    setGeneratedPromptResult(undefined); // Reset previous prompt result
-    // Consider if documentId needs reset or if it's still relevant for other flows.
-    // setDocumentId(''); // For now, let's keep documentId management separate if used by other parts.
+    setExtractedConcepts(null); 
+    setFullExtractionResult(null); 
+    setGeneratedPromptResult(undefined); 
 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('persona', persona); // Ensure static persona is appended
 
-      // Call the new /api/runExtraction route
-      const response = await fetch('/api/runExtraction', {
+      const response = await fetch('/api/runExtraction', { // Corrected API endpoint
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        // Try to get more specific error from response body
         let errorDetails = 'Extraction failed';
         try {
             const errorData = await response.json();
             errorDetails = errorData.error || errorData.details || response.statusText;
         } catch {
-            // Fallback if response body is not JSON or error field doesn't exist
             errorDetails = `Extraction failed with status: ${response.status} ${response.statusText}`;
         }
-        console.error('Extraction failed:', errorDetails);
-        alert(`Error: ${errorDetails}`); // Show error to user
-        return; // Stop further processing
+        console.error('Extraction failed (Creator Page):', errorDetails);
+        alert(`Error: ${errorDetails}`); 
+        // Reset states on failure
+        setExtractedConcepts(null);
+        setFullExtractionResult(null);
+        setDocumentId('');
+        return; 
       }
 
-      const extractionResult: ExtractionResult = await response.json();
-      console.log('Extraction Complete:', extractionResult);
+      // Expect CognitiveKernelResult
+      const cognitiveKernelResult = await response.json() as CognitiveKernelResult;
+      console.log('Full Kernel Response (Creator Page):', cognitiveKernelResult); 
 
-      // Set new state variables
-      setExtractedConcepts(extractionResult.finalConcepts); 
-      setFullExtractionResult(extractionResult); 
-      setDocumentId(extractionResult.documentId ?? ''); // Set documentId from extraction result
-      // If the new API returns a documentId as part of ExtractionResult, set it here if needed.
-      // For example: if (extractionResult.documentId) setDocumentId(extractionResult.documentId);
+      if (cognitiveKernelResult && cognitiveKernelResult.extractionResult) {
+        setExtractedConcepts(cognitiveKernelResult.extractionResult.finalConcepts); 
+        setFullExtractionResult(cognitiveKernelResult.extractionResult); 
+        setDocumentId(cognitiveKernelResult.extractionResult.documentId ?? ''); 
+      } else {
+        console.error('Extraction response not in expected CognitiveKernelResult format (Creator Page):', cognitiveKernelResult);
+        alert('Error: Received an unexpected response format from the server.');
+        setExtractedConcepts(null);
+        setFullExtractionResult(null);
+        setDocumentId('');
+      }
 
     } catch (err) {
-      console.error('Error during document upload and extraction:', err);
+      console.error('Error during document upload and extraction (Creator Page):', err);
       let errorMessage = "An unknown error occurred.";
       if (err instanceof Error) {
         errorMessage = err.message;
       }
       alert(`Error: ${errorMessage}`);
-      // Ensure states are reset on catch
       setExtractedConcepts(null);
       setFullExtractionResult(null);
+      setDocumentId('');
     } finally {
       setIsProcessingDocument(false);
     }

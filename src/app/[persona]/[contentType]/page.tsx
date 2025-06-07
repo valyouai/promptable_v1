@@ -1,8 +1,17 @@
 "use client";
 
-import React, { useState } from 'react';
-import { ExtractedConcepts } from '@/types';
+import * as React from 'react';
+import { useState } from 'react';
+// Import CognitiveKernelResult and related types if needed for stronger typing of response
+// For now, we'll cast the response data as any for brevity, but proper typing is recommended.
+import type { ExtractedConcepts, CognitiveKernelResult } from '@/types'; 
 import { useParams } from 'next/navigation';
+
+// Define a simple interface for expected API error responses
+interface ApiErrorResponse {
+  error?: string;
+  details?: string;
+}
 
 export default function GenerationPage() {
   const params = useParams();
@@ -11,8 +20,8 @@ export default function GenerationPage() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState('');
-  const [extractedText, setExtractedText] = useState('');
   const [analysisResult, setAnalysisResult] = useState<ExtractedConcepts | null>(null);
+  const [processingLog, setProcessingLog] = useState<string[] | null>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -22,13 +31,13 @@ export default function GenerationPage() {
       if (allowedTypes.includes(file.type)) {
         setSelectedFile(file);
         setUploadStatus('');
-        setExtractedText('');
         setAnalysisResult(null);
+        setProcessingLog(null);
       } else {
         setSelectedFile(null);
         setUploadStatus('Unsupported file type. Please upload PDF, TXT, or DOCX.');
-        setExtractedText('');
         setAnalysisResult(null);
+        setProcessingLog(null);
       }
     }
   };
@@ -42,29 +51,37 @@ export default function GenerationPage() {
     setUploadStatus('Uploading and analyzing...');
     const formData = new FormData();
     formData.append('file', selectedFile);
+    formData.append('persona', persona); // Dynamically append persona
 
     try {
-      const response = await fetch('/api/upload-document', {
+      const response = await fetch('/api/runExtraction', { 
         method: 'POST',
         body: formData,
       });
 
-      const data = await response.json();
+      // Try to parse JSON first, then check response.ok
+      const data = await response.json(); 
 
-      if (response.ok) {
+      if (response.ok && data && (data as CognitiveKernelResult).extractionResult) {
+        const cognitiveResult = data as CognitiveKernelResult;
         setUploadStatus('Analysis successful!');
-        setExtractedText(data.extractedText);
-        setAnalysisResult(data.analysisResult);
+        setAnalysisResult(cognitiveResult.extractionResult.finalConcepts);
+        setProcessingLog(cognitiveResult.extractionResult.processingLog || []);
+        console.log("Full API Response:", cognitiveResult);
       } else {
-        setUploadStatus(`Analysis failed: ${data.error}`);
-        setExtractedText('');
+        // Handle error: data might be an error object or something else
+        const errorData = data as ApiErrorResponse;
+        const errorMsg = errorData.error || 'Analysis failed due to unknown server error.';
+        const errorDetails = errorData.details || (response.statusText !== "OK" ? response.statusText : '');
+        setUploadStatus(`Analysis failed: ${errorMsg}${errorDetails ? ' - ' + errorDetails : ''}`);
         setAnalysisResult(null);
+        setProcessingLog(null);
       }
     } catch (error) {
       console.error('Error uploading file:', error);
-      setUploadStatus('An error occurred during analysis.');
-      setExtractedText('');
+      setUploadStatus('An error occurred during analysis. Check console for details.');
       setAnalysisResult(null);
+      setProcessingLog(null);
     }
   };
 
@@ -96,16 +113,19 @@ export default function GenerationPage() {
           {uploadStatus && (
             <p className="mt-4 text-md font-medium text-gray-800">{uploadStatus}</p>
           )}
-          {extractedText && (
+          {/* Display Processing Log instead of just extracted text preview */}
+          {processingLog && processingLog.length > 0 && (
             <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-left">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Extracted Text (Preview):</h3>
-              <p className="text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">{extractedText.substring(0, 1000)}...</p>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Processing Log:</h3>
+              <ul className="list-disc list-inside text-gray-700 text-sm max-h-48 overflow-y-auto">
+                {processingLog.map((logEntry, index) => <li key={index}>{logEntry}</li>)}
+              </ul>
             </div>
           )}
           {analysisResult && (
             <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-left">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Extracted Concepts:</h3>
-              {analysisResult.principles.length > 0 && (
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Extracted Concepts (from CognitiveKernelResult):</h3>
+              {analysisResult.principles && analysisResult.principles.length > 0 && (
                 <div className="mb-2">
                   <h4 className="font-semibold text-gray-700">Principles:</h4>
                   <ul className="list-disc list-inside text-gray-600">
@@ -113,7 +133,7 @@ export default function GenerationPage() {
                   </ul>
                 </div>
               )}
-              {analysisResult.methods.length > 0 && (
+              {analysisResult.methods && analysisResult.methods.length > 0 && (
                 <div className="mb-2">
                   <h4 className="font-semibold text-gray-700">Methods:</h4>
                   <ul className="list-disc list-inside text-gray-600">
@@ -121,7 +141,7 @@ export default function GenerationPage() {
                   </ul>
                 </div>
               )}
-              {analysisResult.frameworks.length > 0 && (
+              {analysisResult.frameworks && analysisResult.frameworks.length > 0 && (
                 <div className="mb-2">
                   <h4 className="font-semibold text-gray-700">Frameworks:</h4>
                   <ul className="list-disc list-inside text-gray-600">
@@ -129,7 +149,7 @@ export default function GenerationPage() {
                   </ul>
                 </div>
               )}
-              {analysisResult.theories.length > 0 && (
+              {analysisResult.theories && analysisResult.theories.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-gray-700">Theories:</h4>
                   <ul className="list-disc list-inside text-gray-600">
@@ -137,12 +157,19 @@ export default function GenerationPage() {
                   </ul>
                 </div>
               )}
-              {(analysisResult.principles.length === 0 &&
-                analysisResult.methods.length === 0 &&
-                analysisResult.frameworks.length === 0 &&
-                analysisResult.theories.length === 0) && (
+              {(!analysisResult.principles || analysisResult.principles.length === 0) &&
+                (!analysisResult.methods || analysisResult.methods.length === 0) &&
+                (!analysisResult.frameworks || analysisResult.frameworks.length === 0) &&
+                (!analysisResult.theories || analysisResult.theories.length === 0) && (
                   <p className="text-gray-600">No specific concepts, methods, frameworks, or theories were extracted.</p>
                 )}
+              {/* Optionally display notes if they exist and are relevant */}
+              {analysisResult.notes && (
+                 <div className="mt-2">
+                  <h4 className="font-semibold text-gray-700">Notes:</h4>
+                  <p className="text-gray-600 whitespace-pre-wrap">{analysisResult.notes}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
