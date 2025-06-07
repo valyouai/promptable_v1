@@ -1,179 +1,200 @@
 "use client";
 
 import * as React from 'react';
-import { useState } from 'react';
-// Import CognitiveKernelResult and related types if needed for stronger typing of response
-// For now, we'll cast the response data as any for brevity, but proper typing is recommended.
-import type { ExtractedConcepts, CognitiveKernelResult } from '@/types'; 
 import { useParams } from 'next/navigation';
+import DocumentUploader from '@/components/DocumentUploader';
+import AnalysisPreview from '@/components/AnalysisPreview';
+import SystemPromptGenerator from '@/components/SystemPromptGenerator';
+import ExportOptions from '@/components/ExportOptions';
+import type {
+    ExtractedConcepts,
+    CognitiveKernelResult,
+    SystemPromptResult,
+    PersonaType, 
+    GenerationConfig
+} from '@/types';
+import { ALLOWED_PERSONAS } from '@/types';
 
-// Define a simple interface for expected API error responses
-interface ApiErrorResponse {
-  error?: string;
-  details?: string;
-}
-
-export default function GenerationPage() {
-  const params = useParams();
-  const persona = params.persona as string;
-  const contentType = params.contentType as string;
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus] = useState('');
-  const [analysisResult, setAnalysisResult] = useState<ExtractedConcepts | null>(null);
-  const [processingLog, setProcessingLog] = useState<string[] | null>(null);
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      const allowedTypes = ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-
-      if (allowedTypes.includes(file.type)) {
-        setSelectedFile(file);
-        setUploadStatus('');
-        setAnalysisResult(null);
-        setProcessingLog(null);
-      } else {
-        setSelectedFile(null);
-        setUploadStatus('Unsupported file type. Please upload PDF, TXT, or DOCX.');
-        setAnalysisResult(null);
-        setProcessingLog(null);
-      }
-    }
-  };
-
-  const handleFileUpload = async () => {
-    if (!selectedFile) {
-      setUploadStatus('Please select a file first.');
-      return;
-    }
-
-    setUploadStatus('Uploading and analyzing...');
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('persona', persona); // Dynamically append persona
-
-    try {
-      const response = await fetch('/api/runExtraction', { 
-        method: 'POST',
-        body: formData,
-      });
-
-      // Try to parse JSON first, then check response.ok
-      const data = await response.json(); 
-
-      if (response.ok && data && (data as CognitiveKernelResult).extractionResult) {
-        const cognitiveResult = data as CognitiveKernelResult;
-        setUploadStatus('Analysis successful!');
-        setAnalysisResult(cognitiveResult.extractionResult.finalConcepts);
-        setProcessingLog(cognitiveResult.extractionResult.processingLog || []);
-        console.log("Full API Response:", cognitiveResult);
-      } else {
-        // Handle error: data might be an error object or something else
-        const errorData = data as ApiErrorResponse;
-        const errorMsg = errorData.error || 'Analysis failed due to unknown server error.';
-        const errorDetails = errorData.details || (response.statusText !== "OK" ? response.statusText : '');
-        setUploadStatus(`Analysis failed: ${errorMsg}${errorDetails ? ' - ' + errorDetails : ''}`);
-        setAnalysisResult(null);
-        setProcessingLog(null);
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      setUploadStatus('An error occurred during analysis. Check console for details.');
-      setAnalysisResult(null);
-      setProcessingLog(null);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <h1 className="text-4xl font-bold text-gray-900 text-center mb-12">
-        Generate Prompt for {persona.charAt(0).toUpperCase() + persona.slice(1)} - {contentType.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-      </h1>
-
-      <section className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-8">
-        <h2 className="text-3xl font-semibold text-gray-800 text-center mb-8">Upload Your Document</h2>
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-          <p className="text-gray-500 text-lg mb-4">Drag and drop your files here, or click to select</p>
-          <input type="file" className="hidden" id="file-upload" onChange={handleFileChange} />
-          <label htmlFor="file-upload" className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 cursor-pointer">
-            Browse Files
-          </label>
-          {selectedFile && (
-            <p className="mt-4 text-md text-gray-700">Selected file: <span className="font-semibold">{selectedFile.name}</span></p>
-          )}
-          <p className="mt-4 text-sm text-gray-500">Supported formats: PDF, TXT, DOCX</p>
-          <button
-            onClick={handleFileUpload}
-            disabled={!selectedFile}
-            className="mt-6 inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Upload and Analyze
-          </button>
-          {uploadStatus && (
-            <p className="mt-4 text-md font-medium text-gray-800">{uploadStatus}</p>
-          )}
-          {/* Display Processing Log instead of just extracted text preview */}
-          {processingLog && processingLog.length > 0 && (
-            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-left">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Processing Log:</h3>
-              <ul className="list-disc list-inside text-gray-700 text-sm max-h-48 overflow-y-auto">
-                {processingLog.map((logEntry, index) => <li key={index}>{logEntry}</li>)}
-              </ul>
-            </div>
-          )}
-          {analysisResult && (
-            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-left">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Extracted Concepts (from CognitiveKernelResult):</h3>
-              {analysisResult.principles && analysisResult.principles.length > 0 && (
-                <div className="mb-2">
-                  <h4 className="font-semibold text-gray-700">Principles:</h4>
-                  <ul className="list-disc list-inside text-gray-600">
-                    {analysisResult.principles.map((p: string, i: number) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              )}
-              {analysisResult.methods && analysisResult.methods.length > 0 && (
-                <div className="mb-2">
-                  <h4 className="font-semibold text-gray-700">Methods:</h4>
-                  <ul className="list-disc list-inside text-gray-600">
-                    {analysisResult.methods.map((m: string, i: number) => <li key={i}>{m}</li>)}
-                  </ul>
-                </div>
-              )}
-              {analysisResult.frameworks && analysisResult.frameworks.length > 0 && (
-                <div className="mb-2">
-                  <h4 className="font-semibold text-gray-700">Frameworks:</h4>
-                  <ul className="list-disc list-inside text-gray-600">
-                    {analysisResult.frameworks.map((f: string, i: number) => <li key={i}>{f}</li>)}
-                  </ul>
-                </div>
-              )}
-              {analysisResult.theories && analysisResult.theories.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-gray-700">Theories:</h4>
-                  <ul className="list-disc list-inside text-gray-600">
-                    {analysisResult.theories.map((t: string, i: number) => <li key={i}>{t}</li>)}
-                  </ul>
-                </div>
-              )}
-              {(!analysisResult.principles || analysisResult.principles.length === 0) &&
-                (!analysisResult.methods || analysisResult.methods.length === 0) &&
-                (!analysisResult.frameworks || analysisResult.frameworks.length === 0) &&
-                (!analysisResult.theories || analysisResult.theories.length === 0) && (
-                  <p className="text-gray-600">No specific concepts, methods, frameworks, or theories were extracted.</p>
-                )}
-              {/* Optionally display notes if they exist and are relevant */}
-              {analysisResult.notes && (
-                 <div className="mt-2">
-                  <h4 className="font-semibold text-gray-700">Notes:</h4>
-                  <p className="text-gray-600 whitespace-pre-wrap">{analysisResult.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
+// Placeholder for a simple Error Boundary or error display component
+const KernelErrorBoundary: React.FC<{ error: { message: string; details?: string } | null }> = ({ error }) => {
+    if (!error) return null;
+    return (
+        <div style={{ border: '1px solid red', color: 'red', padding: '10px', margin: '10px 0' }}>
+            <h4>Error Occurred</h4>
+            <p><strong>Message:</strong> {error.message}</p>
+            {error.details && <p><strong>Details:</strong> {error.details}</p>}
         </div>
-      </section>
-    </div>
-  );
-}
+    );
+};
+
+const DynamicPersonaPage: React.FC = () => {
+    const params = useParams();
+    const [persona, setPersona] = React.useState<PersonaType | null>(null);
+    const [contentType, setContentType] = React.useState<string | null>(null);
+
+    // State Management
+    const [documentId, setDocumentId] = React.useState<string>('');
+    const [cognitiveKernelResult, setCognitiveKernelResult] = React.useState<CognitiveKernelResult | null>(null);
+    const [extractedConcepts, setExtractedConcepts] = React.useState<ExtractedConcepts | null>(null);
+    const [generatedPromptResult, setGeneratedPromptResult] = React.useState<SystemPromptResult | null>(null);
+    
+    const [isProcessingDocument, setIsProcessingDocument] = React.useState<boolean>(false);
+    const [isGeneratingPrompt, setIsGeneratingPrompt] = React.useState<boolean>(false);
+    const [errorState, setErrorState] = React.useState<{ message: string; details?: string } | null>(null);
+
+    React.useEffect(() => {
+        const routePersona = params.persona as string;
+        const routeContentType = params.contentType as string;
+
+        if (ALLOWED_PERSONAS.includes(routePersona as PersonaType)) {
+            setPersona(routePersona as PersonaType);
+        } else {
+            setErrorState({ message: `Invalid persona in URL: ${routePersona}. Allowed: ${ALLOWED_PERSONAS.join(', ')}` });
+            setPersona(null);
+        }
+        setContentType(routeContentType || 'default');
+    }, [params]);
+
+    const handleDocumentUpload = async (file: File, selectedPersonaForUpload: PersonaType) => {
+        if (!selectedPersonaForUpload) {
+            setErrorState({ message: "Persona not selected or invalid for upload." });
+            return;
+        }
+        setIsProcessingDocument(true);
+        setErrorState(null);
+        setCognitiveKernelResult(null);
+        setExtractedConcepts(null);
+        setGeneratedPromptResult(null);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('persona', selectedPersonaForUpload);
+
+        try {
+            const response = await fetch('/api/runExtraction', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: "Failed to parse error response from server", details: response.statusText }));
+                throw new Error(errorData.details || errorData.message || `HTTP error! status: ${response.status}`);
+            }
+
+            const result: CognitiveKernelResult = await response.json();
+            setCognitiveKernelResult(result);
+            if (result.extractionResult && result.extractionResult.finalConcepts) {
+                setExtractedConcepts(result.extractionResult.finalConcepts);
+                if (result.extractionResult.documentId) {
+                    setDocumentId(result.extractionResult.documentId);
+                }
+            } else {
+                setErrorState({ message: "Extraction completed, but no final concepts found in the result." });
+            }
+        } catch (error: unknown) {
+            console.error("Error during document upload/extraction:", error);
+            const message = error instanceof Error ? error.message : "Failed to process document.";
+            const details = error instanceof Error ? error.stack : String(error);
+            setErrorState({ message, details });
+        }
+        setIsProcessingDocument(false);
+    };
+
+    const handleGenerateSystemPrompt = async (config: GenerationConfig) => {
+        if (!extractedConcepts || !persona || !contentType) {
+            setErrorState({ message: "Cannot generate system prompt: Missing extracted concepts, persona, or content type." });
+            return;
+        }
+        setIsGeneratingPrompt(true);
+        setErrorState(null);
+
+        try {
+            const response = await fetch('/api/generate-system-prompt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    extractedConcepts,
+                    persona,
+                    contentType,
+                    generationConfig: config,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: "Failed to parse error response from server", details: response.statusText }));
+                throw new Error(errorData.details || errorData.message || `HTTP error! status: ${response.status}`);
+            }
+
+            const result: SystemPromptResult = await response.json();
+            setGeneratedPromptResult(result);
+        } catch (error: unknown) {
+            console.error("Error generating system prompt:", error);
+            const message = error instanceof Error ? error.message : "Failed to generate system prompt.";
+            const details = error instanceof Error ? error.stack : String(error);
+            setErrorState({ message, details });
+        }
+        setIsGeneratingPrompt(false);
+    };
+
+    if (!persona) {
+        return (
+            <div className="container mx-auto p-4">
+                <KernelErrorBoundary error={errorState} />
+                {!errorState && <p>Loading persona information or invalid persona...</p>}
+            </div>
+        );
+    }
+
+    return (
+        <div className="container mx-auto p-4">
+            <h1 className="text-2xl font-bold mb-4 capitalize">Dynamic Persona Page: {persona} - {contentType}</h1>
+            
+            <KernelErrorBoundary error={errorState} />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="col-span-1">
+                    {!cognitiveKernelResult && (
+                        <DocumentUploader
+                            onUpload={(file: File) => handleDocumentUpload(file, persona)} 
+                            acceptedTypes={['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']}
+                            isProcessing={isProcessingDocument}
+                            processingStatus={isProcessingDocument ? 'Processing document...' : undefined}
+                        />
+                    )}
+
+                    {extractedConcepts && (
+                        <div className="mt-8">
+                            <AnalysisPreview
+                                documentId={documentId} 
+                                extractedConcepts={extractedConcepts}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div className="col-span-1">
+                    {extractedConcepts && (
+                        <SystemPromptGenerator
+                            extractedConcepts={extractedConcepts}
+                            onGenerate={handleGenerateSystemPrompt} 
+                            isGenerating={isGeneratingPrompt}
+                            generatedPromptResult={generatedPromptResult}
+                        />
+                    )}
+                    {generatedPromptResult && generatedPromptResult.success && (
+                         <div className="mt-8">
+                            <ExportOptions 
+                                systemPromptResult={generatedPromptResult} 
+                                extractedConcepts={extractedConcepts} 
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default DynamicPersonaPage;

@@ -1,13 +1,9 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
+    "baseUrl": "./src",
     "forceConsistentCasingInFileNames": true,
     "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -25,18 +21,7 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/lib/*": [
-        "./lib/*"
-      ],
-      "@/types": [
-        "./types/index"
-      ],
-      "@/components/*": [
-        "./components/*"
-      ]
+      "@/*": ["*"]
     },
     "noEmit": true
   },
@@ -45,11 +30,12 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    "lib/**/*.ts",
-    "types/**/*.ts",
-    "test/**/*.ts"
+    "../components/**/*.ts",
+    "../components/**/*.tsx",
+    "../lib/**/*.ts",
+    "../types/**/*.ts",
+    "../test/**/*.ts",
+    "../tests/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

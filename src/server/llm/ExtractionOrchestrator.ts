@@ -1,5 +1,5 @@
-import type { ExtractedConcepts, QAValidationResult, CognitiveKernelResult, ExtractionResult as GlobalExtractionResult } from '@/types';
-import { SemanticChunker } from '../extraction/SemanticChunker';
+import type { ExtractedConcepts, /* QAValidationResult, */ CognitiveKernelResult, ExtractionResult as GlobalExtractionResult } from '@/types';
+import { SemanticChunker, type Chunk as SemanticChunk } from '../../../lib/chunking/SemanticChunker';
 import { ExtractorAgent } from './ExtractorAgent';
 import { PatternNormalizer } from '../extraction/PatternNormalizer';
 import { AmbiguityDetectorAgent } from './AmbiguityDetectorAgent';
@@ -14,76 +14,148 @@ import type { PersonaType } from './RelevanceFilteringAgent';
 
 // Define output shape for the original extraction part (this was local before, now explicitly named for clarity)
 export class ExtractionOrchestrator {
+
+    private static _mergeChunkConcepts(chunkConceptsList: ExtractedConcepts[]): ExtractedConcepts {
+        const merged: ExtractedConcepts = {
+            principles: [],
+            methods: [],
+            frameworks: [],
+            theories: [],
+            notes: "",
+        };
+
+        const allNotes: string[] = [];
+
+        for (const chunkConcepts of chunkConceptsList) {
+            if (chunkConcepts.principles) merged.principles.push(...chunkConcepts.principles);
+            if (chunkConcepts.methods) merged.methods.push(...chunkConcepts.methods);
+            if (chunkConcepts.frameworks) merged.frameworks.push(...chunkConcepts.frameworks);
+            if (chunkConcepts.theories) merged.theories.push(...chunkConcepts.theories);
+            if (chunkConcepts.notes && chunkConcepts.notes.trim() !== "") {
+                allNotes.push(chunkConcepts.notes.trim());
+            }
+
+            const optionalFields: (keyof ExtractedConcepts)[] = [
+                'Research Objective', 'Methods', 'Dataset(s)',
+                'Key Findings', 'Limitations', 'Future Work', 'Applications'
+            ];
+            for (const field of optionalFields) {
+                if (chunkConcepts[field] && typeof chunkConcepts[field] === 'string' && !merged[field]) {
+                    merged[field] = chunkConcepts[field] as string;
+                }
+            }
+        }
+
+        merged.principles = [...new Set(merged.principles)];
+        merged.methods = [...new Set(merged.methods)];
+        merged.frameworks = [...new Set(merged.frameworks)];
+        merged.theories = [...new Set(merged.theories)];
+
+        if (allNotes.length > 0) {
+            merged.notes = allNotes.join("\n\n--- Notes from Chunk ---\n\n");
+        }
+
+        return merged;
+    }
+
     static async runExtraction(documentText: string, persona: PersonaType): Promise<CognitiveKernelResult> {
         const processingLog: string[] = [];
         processingLog.push('Starting Extraction Pipeline...');
 
-        // Step 1: Chunk
-        const chunks = SemanticChunker.chunkDocument(documentText);
-        processingLog.push(`Document chunked into ${chunks.length} segments.`);
+        const chunks: SemanticChunk[] = SemanticChunker.chunkByTokens(documentText, {
+            chunkSizeTokens: 4000,
+            tokenOverlap: 200
+        });
+        processingLog.push(`Document split into ${chunks.length} token-based chunks.`);
 
-        // Step 2: Extract
-        const chunkTexts = chunks.map(chunk => chunk.text);
-        const extractedConcepts = await ExtractorAgent.extract(chunkTexts);
-        processingLog.push('Initial extraction complete.');
+        const allChunkConcepts: ExtractedConcepts[] = [];
+        processingLog.push(`Starting extraction for ${chunks.length} chunks...`);
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            processingLog.push(`Processing chunk ${i + 1}/${chunks.length} (tokens: ${chunk.tokenCount})...`);
+            try {
+                const chunkConcepts = await ExtractorAgent.extract(chunk.text);
+                allChunkConcepts.push(chunkConcepts);
+                processingLog.push(`Extraction complete for chunk ${i + 1}.`);
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                processingLog.push(`Error extracting concepts from chunk ${i + 1}: ${errorMessage}. Skipping this chunk.`);
+                console.error(`[ExtractionOrchestrator] Error processing chunk ${i + 1}:`, error);
+                // Add a placeholder or empty concept set for the failed chunk to maintain array length if necessary for some merge strategies,
+                // or simply skip as done here. For now, skipping.
+            }
+        }
 
-        // Step 3: Normalize
-        const normalizedConcepts = PatternNormalizer.normalize(extractedConcepts);
-        processingLog.push('Pattern normalization applied.');
+        if (allChunkConcepts.length === 0 && chunks.length > 0) {
+            processingLog.push("All chunks failed to extract concepts. Aborting further processing.");
+            // Consider what to return or how to signal this failure. 
+            // For now, we'll proceed, and downstream agents will handle empty concepts.
+            // Fallback to an empty structure to prevent crashes, though this should ideally result in an error response.
+            const emptyConcepts: ExtractedConcepts = { principles: [], methods: [], frameworks: [], theories: [], notes: "All chunk extractions failed." };
+            allChunkConcepts.push(emptyConcepts);
+        }
 
-        // Step 4: Ambiguity Detection
+        processingLog.push('Merging concepts from all processed chunks...');
+        const mergedExtractedConcepts = this._mergeChunkConcepts(allChunkConcepts);
+        processingLog.push('Concept merging complete.');
+
+        const normalizedConcepts = PatternNormalizer.normalize(mergedExtractedConcepts);
+        processingLog.push('Pattern normalization applied to merged concepts.');
+
+        // Step 4: Ambiguity Detection (operates on merged, normalized concepts)
         const ambiguityScores = AmbiguityDetectorAgent.detectAmbiguities(normalizedConcepts);
-        processingLog.push(`Ambiguity detection complete (${ambiguityScores.length} fields scored).`);
+        processingLog.push(`Ambiguity detection complete on merged concepts (${ambiguityScores.length} fields scored).`);
 
-        // Step 5: Dependency Analysis
+        // Step 5: Dependency Analysis (operates on merged, normalized concepts)
         const dependencyModel = new DependencyModel();
-        dependencyModel.analyzeDependencies(normalizedConcepts);
+        dependencyModel.analyzeDependencies(normalizedConcepts); // This internally builds the graph
 
         // Correctly build the dependencyInsights map for ConfidenceFusionEngine
         const dependencyInsightsForFusion: Partial<Record<keyof ExtractedConcepts, DependencyInsight[]>> = {};
-        const fieldsToAnalyze: (keyof ExtractedConcepts)[] = ['principles', 'methods', 'frameworks', 'theories']; // Add other relevant fields if necessary
+        const fieldsToAnalyze: (keyof ExtractedConcepts)[] = ['principles', 'methods', 'frameworks', 'theories'];
 
         for (const sourceField of fieldsToAnalyze) {
-            // Ensure the field exists and has content in normalizedConcepts before seeking dependencies
             if (normalizedConcepts[sourceField] &&
                 ((Array.isArray(normalizedConcepts[sourceField]) && (normalizedConcepts[sourceField] as string[]).length > 0) ||
                     typeof normalizedConcepts[sourceField] === 'string' && (normalizedConcepts[sourceField] as string).length > 0)
             ) {
+                // Assuming getPotentialDependencies is part of your DomainSchema or a similar utility accessible here
+                // For now, this matches the existing structure.
                 const insightsArray = dependencyModel.getPotentialDependencies(sourceField as import('./DomainSchema').DomainField);
                 if (insightsArray.length > 0) {
                     dependencyInsightsForFusion[sourceField] = insightsArray;
                 }
             }
         }
-        // Note: The previous variable 'dependencyInsights' (which was an array) is no longer created.
-        // 'dependencyInsightsArray' is now scoped within the loop.
 
-        // Step 6: Confidence Fusion
+        processingLog.push('Dependency analysis complete for merged concepts.');
+
+        // Step 6: Confidence Fusion (operates on merged, normalized concepts)
         const confidenceResult = ConfidenceFusionEngine.fuseSignals({
             concepts: normalizedConcepts,
             ambiguityScores,
-            dependencyInsights: dependencyInsightsForFusion, // Use the correctly structured map
+            dependencyInsights: dependencyInsightsForFusion,
         });
 
-        processingLog.push('Confidence fusion complete.');
+        processingLog.push('Confidence fusion complete for merged concepts.');
 
-        // Step 7: Reinforcement Pass
+        // Step 7: Reinforcement Pass (operates on merged, normalized concepts, but with full document text)
         const reinforcementOutput = await ReinforcementAgent.refineConcepts({
-            originalConcepts: normalizedConcepts,
-            fullDocumentText: documentText,
+            originalConcepts: normalizedConcepts, // Pass the merged and normalized concepts
+            fullDocumentText: documentText,      // Pass the original full document text
             ambiguityScores,
         });
 
-        processingLog.push('Reinforcement agent pass complete.');
+        processingLog.push('Reinforcement agent pass complete on merged concepts.');
 
-        // Step 8: Self-Correction Loop (placeholder as per the patch)
+        // Step 8: Self-Correction Loop (placeholder)
         const selfCorrectionDetailsForGlobalResult: GlobalExtractionResult['selfCorrectionDetails'] = undefined;
 
-        // Step 9: QA Validation
+        // Step 9: QA Validation (operates on refined concepts from reinforcement, with full document text)
         const qaValidation = await ExtractionQAAgent.validate(documentText, reinforcementOutput.refinedConcepts);
-        processingLog.push('QA validation complete.');
+        processingLog.push('QA validation complete on final concepts.');
 
-        // MODIFIED: Assemble the extractionResult object, explicitly typing it as GlobalExtractionResult
+        // Assemble the extractionResult object
         const extractionResult: GlobalExtractionResult = {
             finalConcepts: reinforcementOutput.refinedConcepts,
             ambiguityScores: ambiguityScores.map(as => ({ ...as, field: as.field as keyof ExtractedConcepts })),
@@ -93,8 +165,7 @@ export class ExtractionOrchestrator {
             reinforcementDetails: reinforcementOutput.refinementSummary
                 ? {
                     summary: reinforcementOutput.refinementSummary,
-                    attempts: [], // Placeholder, as ReinforcementAgent current mock doesn't provide detailed attempts
-                    // Example logic for needsFurtherReview based on available info:
+                    attempts: [],
                     needsFurtherReview: reinforcementOutput.confidenceScore !== undefined ? reinforcementOutput.confidenceScore < 0.7 : true,
                 }
                 : undefined,
@@ -102,18 +173,13 @@ export class ExtractionOrchestrator {
             qaValidation,
         };
 
-        // NEW: Inject cognitive orchestration layer post-extraction
+        // Cognitive orchestration layer post-extraction
         const cognitiveOutput = OrchestrationController.runCognitiveOrchestration(
             extractionResult.finalConcepts,
             persona
         );
-
-        // TEMP: Log to verify cognitive kernel invocation during first runs -- REMOVE THIS LINE
-        // console.log('[Phase 15 Cognitive Kernel Output]', JSON.stringify(cognitiveOutput, null, 2)); 
-
         processingLog.push('Phase 15 Cognitive Layer Orchestration invoked successfully.');
 
-        // Return new Phase 15 contract structure:
         const cognitiveKernelResult: CognitiveKernelResult = {
             extractionResult,
             cognitiveOutput,
@@ -123,37 +189,47 @@ export class ExtractionOrchestrator {
     }
 }
 
-// Example usage
-// MODIFIED: Uncommenting the testOrchestrator function -- REMOVE THIS ENTIRE FUNCTION AND ITS CALL
-/* REMOVE_START
+// Example usage - Ensure this is removed or commented out for production
+/*
 async function testOrchestrator() {
-    console.log("Testing ExtractionOrchestrator...");
-    const sampleDocumentText1 = "This document discusses agile methodologies and their core principles like adaptation and scalability. It also refers to the scrum framework.";
-    const sampleDocumentText2 = "Exploring game theory. Methods are vague. Principles unclear. Adaptation is key in self-organization."; // designed to trigger reinforcement & loop
-    const sampleDocumentText3 = "Placeholder placeholder principle. Test method. Example framework. Dummy theory."; // designed to trigger QA issues
-    const testPersona: PersonaType = 'researcher'; // Define a persona for testing
+    console.log("Testing ExtractionOrchestrator with chunking...");
+    // A longer sample text that would benefit from chunking
+    const sampleDocumentText = `
+    Part 1: Introduction to Core Concepts.
+    This document delves into the foundational principles of quantum computing, including superposition and entanglement. 
+    Key methods explored are quantum annealing and gate-based quantum computation. Several quantum algorithms, which can be seen as frameworks,
+    such as Shor's algorithm and Grover's algorithm, are discussed. The theoretical underpinnings draw heavily from quantum mechanics and information theory.
+    Notes from this section emphasize the nascent stage of the technology.
+
+    --- Chunk Separator ---
+
+    Part 2: Advanced Applications and Theories.
+    Further, we explore advanced applications in drug discovery and material science. The methods section expands to include variational quantum eigensolvers (VQE).
+    Frameworks for quantum machine learning are also introduced. String theory and M-theory are touched upon as remote but relevant theoretical landscapes.
+    Scalability remains a primary principle for future development. Entanglement, while a principle, also has methodological implications.
+    Notes here focus on the computational challenges.
+
+    --- Chunk Separator ---
+
+    Part 3: Challenges and Future Work.
+    The primary challenge is decoherence, a principle that impacts all quantum methods. Building fault-tolerant quantum computers is a key framework for progress.
+    Future work will focus on developing new error correction codes (methods) and exploring novel quantum theories. The theory of everything is a distant goal.
+    Notes: Experimental validation is crucial. Principles of open science are encouraged.
+    Additional observations from part three include the importance of interdisciplinary collaboration. This involves methods from classical computer science.
+    The framework for ethical considerations is also paramount. Quantum gravity is a background theory.
+    `;
+    const testPersona: PersonaType = 'researcher';
 
     try {
-        console.log("\n--- Test Run 1: Simple Document (Persona: " + testPersona + ") ---");
-        const result1 = await ExtractionOrchestrator.runExtraction(sampleDocumentText1, testPersona);
-        console.log("\n--- Orchestrator Test Result 1 (Final) ---");
+        console.log("\n--- Test Run: Long Document (Persona: " + testPersona + ") ---");
+        const result1 = await ExtractionOrchestrator.runExtraction(sampleDocumentText, testPersona);
+        console.log("\n--- Orchestrator Test Result (Final with Chunking) ---");
         console.dir(result1, { depth: null });
-
-        console.log("\n\n--- Test Run 2: Document designed to need correction (Persona: " + testPersona + ") ---");
-        const result2 = await ExtractionOrchestrator.runExtraction(sampleDocumentText2, testPersona);
-        console.log("\n--- Orchestrator Test Result 2 (Final) ---");
-        console.dir(result2, { depth: null });
-
-        console.log("\n\n--- Test Run 3: Document designed to have QA issues (Persona: " + testPersona + ") ---");
-        const result3 = await ExtractionOrchestrator.runExtraction(sampleDocumentText3, testPersona);
-        console.log("\n--- Orchestrator Test Result 3 (Final) ---");
-        console.dir(result3, { depth: null });
 
     } catch (error) {
         console.error("Error during ExtractionOrchestrator test:", error);
     }
 }
 
-// MODIFIED: Adding a call to testOrchestrator to execute it
-testOrchestrator();
-REMOVE_END */ 
+// testOrchestrator(); // Ensure this is commented out for production
+*/ 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ExtractionKernel } from '@/server/extraction/ExtractionKernel';
+import { ExtractionKernel, type Persona } from '@/server/extraction/ExtractionKernel';
+import { StorageDriver } from '@/lib/extraction/StorageDriver';
 
 export async function GET(
     request: NextRequest,
@@ -14,8 +15,18 @@ export async function GET(
     }
 
     try {
-        console.log(`[EXTRACT_API] Calling ExtractionKernel for documentId: ${documentId}`);
-        const extractedConcepts = await ExtractionKernel.handle(documentId);
+        // Step 1: Fetch document content
+        console.log(`[EXTRACT_API] Fetching document content for documentId: ${documentId}`);
+        const documentText = await StorageDriver.fetchDocument(documentId);
+
+        // Step 2: Determine persona (defaulting to 'researcher' for now)
+        const persona: Persona = 'researcher'; // TODO: Consider making this configurable via request
+        console.log(`[EXTRACT_API] Using persona: ${persona} for documentId: ${documentId}`);
+
+        // Step 3: Call ExtractionKernel.extract
+        console.log(`[EXTRACT_API] Calling ExtractionKernel.extract for documentId: ${documentId}`);
+        const extractedConcepts = await ExtractionKernel.extract({ persona, documentText });
+
         console.log(`[EXTRACT_API] Successfully extracted concepts for documentId: ${documentId}`);
         return NextResponse.json(extractedConcepts);
     } catch (error) {

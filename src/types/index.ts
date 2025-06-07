@@ -1,3 +1,5 @@
+import type { CognitiveOrchestrationOutput } from '../src/server/llm/OrchestrationController';
+
 export type ExtractedConcepts = {
     principles: string[];
     methods: string[];
@@ -117,13 +119,20 @@ export interface SelfCorrectionPassDetailForType {
     overallConfidenceAfterPass?: number;
 }
 
-// Re-export CognitiveOrchestrationOutput from its definition in OrchestrationController
-export type { CognitiveOrchestrationOutput } from '../src/server/llm/OrchestrationController';
-
 // Phase 15: New composite type for combined Extraction and Cognitive Kernel output
 // No need to re-import ExtractionResult as it is defined in this file.
 // CognitiveOrchestrationOutput is available due to the re-export earlier in this file.
 export interface CognitiveKernelResult {
     extractionResult: ExtractionResult;
     cognitiveOutput: CognitiveOrchestrationOutput;
+}
+
+// Added for Phase 17B UI Harmonization
+export type PersonaType = 'creator' | 'researcher' | 'educator';
+
+export const ALLOWED_PERSONAS: PersonaType[] = ['creator', 'researcher', 'educator'];
+
+// Placeholder for GenerationConfig type, to be refined with SystemPromptGenerator component details
+export interface GenerationConfig {
+    [key: string]: any; // Allow arbitrary keys for now
 }

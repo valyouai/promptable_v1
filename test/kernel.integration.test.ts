@@ -22,16 +22,19 @@ async function runKernelIntegrationTest() {
         await fs.writeFile(TEST_DOC_PATH, TEST_DOC_CONTENT);
         console.log(`[SETUP] Test file created with content: "${TEST_DOC_CONTENT.substring(0, 50)}..."`);
 
-        // 2. Execute: Call ExtractionKernel.handle
+        // 2. Execute: Call ExtractionKernel.extract
         // Ensure NODE_ENV=test or OPENAI_API_KEY=test-key is set via .env.test for openai mock
-        console.log(`[EXECUTE] Calling ExtractionKernel.handle with documentId: ${TEST_DOC_ID}`);
-        const result: ExtractedConcepts = await ExtractionKernel.handle(TEST_DOC_ID);
+        console.log(`[EXECUTE] Calling ExtractionKernel.extract with persona 'researcher' and test document content.`);
+        const result: ExtractedConcepts = await ExtractionKernel.extract({
+            persona: 'researcher', // Assuming 'researcher' persona for this integration test
+            documentText: TEST_DOC_CONTENT
+        });
 
         // 3. Assertions
         console.log('[ASSERT] Received result from ExtractionKernel:', JSON.stringify(result, null, 2));
 
         if (!result) {
-            throw new Error('AssertionError: ExtractionKernel.handle returned undefined or null');
+            throw new Error('AssertionError: ExtractionKernel.extract returned undefined or null');
         }
 
         // Assert structure based on ExtractedConcepts type

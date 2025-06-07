@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { join } from 'path';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -12,6 +13,12 @@ const nextConfig: NextConfig = {
   swcPlugins: [],
 
   webpack: (config, { isServer, dev }) => {
+    // Add alias for @/
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': join(__dirname, 'src'),
+    };
+
     // Standard Webpack experiments for WASM support
     config.experiments = {
       ...config.experiments,

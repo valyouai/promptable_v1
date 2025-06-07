@@ -1,16 +1,17 @@
-import { ExtractionKernel } from '@/server/extraction/ExtractionKernel';
-import { StorageDriver } from '@/lib/extraction/StorageDriver';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { ExtractionKernel, type Persona } from '@/server/extraction/ExtractionKernel';
+// import { StorageDriver } from '@/lib/extraction/StorageDriver'; // Unused
 import { ExtractionEngine } from '@/server/extraction/ExtractionEngine';
-import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
-import type { ExtractedConcepts, QAValidationResult } from '@/types';
+// import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent'; // Unused
+import type { ExtractedConcepts /*, QAValidationResult*/ } from '@/types'; // QAValidationResult is unused
 
 // Mock the dependencies
-jest.mock('@/lib/extraction/StorageDriver');
+// jest.mock('@/lib/extraction/StorageDriver'); // Mock for unused import
 jest.mock('@/server/extraction/ExtractionEngine');
-jest.mock('@/lib/extraction/ExtractionQAAgent');
+// jest.mock('@/lib/extraction/ExtractionQAAgent'); // QAAgent is not directly called by ExtractionKernel anymore
 
 describe('ExtractionKernel', () => {
-    const mockDocumentId = 'test-doc-id';
+    // const mockDocumentId = 'test-doc-id'; // Not used directly by .extract
     const mockDocumentText = 'This is the test document content.';
     const mockExtractedConcepts: ExtractedConcepts = {
         principles: ['Mock Principle 1'],
@@ -18,106 +19,93 @@ describe('ExtractionKernel', () => {
         frameworks: ['Mock Framework 1'],
         theories: ['Mock Theory 1'],
     };
-    const mockSuccessfulQaResult: QAValidationResult = {
-        isValid: true,
-        issues: [],
-        validatedConcepts: mockExtractedConcepts,
-        confidenceScore: 0.95,
-    };
-    const mockFailedQaResult: QAValidationResult = {
-        isValid: false,
-        issues: ['QA failed due to critical issue'],
-        validatedConcepts: mockExtractedConcepts,
-        confidenceScore: 0.3,
-    };
+    // const mockSuccessfulQaResult: QAValidationResult = { // Not used directly
+    //     isValid: true,
+    //     issues: [],
+    //     validatedConcepts: mockExtractedConcepts,
+    //     confidenceScore: 0.95,
+    // };
+    // const mockFailedQaResult: QAValidationResult = { // Not used directly
+    //     isValid: false,
+    //     issues: ['QA failed due to critical issue'],
+    //     validatedConcepts: mockExtractedConcepts,
+    //     confidenceScore: 0.3,
+    // };
 
-    let mockedStorageDriver: jest.Mocked<typeof StorageDriver>;
+    // let mockedStorageDriver: jest.Mocked<typeof StorageDriver>; // Not used directly
     let mockedExtractionEngine: jest.Mocked<typeof ExtractionEngine>;
-    let mockedExtractionQAAgent: jest.Mocked<typeof ExtractionQAAgent>;
+    // let mockedExtractionQAAgent: jest.Mocked<typeof ExtractionQAAgent>; // Not used directly
 
     beforeEach(() => {
         // Reset mocks and clear any previous calls
         jest.clearAllMocks();
 
         // Assign mocked instances with types
-        mockedStorageDriver = StorageDriver as jest.Mocked<typeof StorageDriver>;
+        // mockedStorageDriver = StorageDriver as jest.Mocked<typeof StorageDriver>; // Not used directly
         mockedExtractionEngine = ExtractionEngine as jest.Mocked<typeof ExtractionEngine>;
-        mockedExtractionQAAgent = ExtractionQAAgent as jest.Mocked<typeof ExtractionQAAgent>;
+        // mockedExtractionQAAgent = ExtractionQAAgent as jest.Mocked<typeof ExtractionQAAgent>; // Not used directly
     });
 
-    describe('handle', () => {
-        it('should successfully fetch, extract, validate (QA pass), and return concepts', async () => {
+    describe('extract', () => { // Changed from 'handle'
+        it('should successfully call ExtractionEngine.extract and return concepts for "creator" persona', async () => {
             // Arrange
-            mockedStorageDriver.fetchDocument.mockResolvedValue(mockDocumentText);
             mockedExtractionEngine.extract.mockResolvedValue(mockExtractedConcepts);
-            mockedExtractionQAAgent.validate.mockResolvedValue(mockSuccessfulQaResult);
+            const input = { persona: 'creator' as const, documentText: mockDocumentText };
 
             // Act
-            const result = await ExtractionKernel.handle(mockDocumentId);
+            const result = await ExtractionKernel.extract(input);
 
             // Assert
-            expect(mockedStorageDriver.fetchDocument).toHaveBeenCalledWith(mockDocumentId);
-            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText);
-            expect(mockedExtractionQAAgent.validate).toHaveBeenCalledWith(mockDocumentText, mockExtractedConcepts);
-            expect(result).toEqual(mockSuccessfulQaResult.validatedConcepts);
+            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText, undefined, 'creator');
+            expect(result).toEqual(mockExtractedConcepts);
         });
 
-        it('should proceed and return concepts even if QA validation fails (logs warning)', async () => {
+        it('should successfully call ExtractionEngine.extract and return concepts for "researcher" persona', async () => {
             // Arrange
-            mockedStorageDriver.fetchDocument.mockResolvedValue(mockDocumentText);
             mockedExtractionEngine.extract.mockResolvedValue(mockExtractedConcepts);
-            mockedExtractionQAAgent.validate.mockResolvedValue(mockFailedQaResult);
-            const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+            const input = { persona: 'researcher' as const, documentText: mockDocumentText };
 
             // Act
-            const result = await ExtractionKernel.handle(mockDocumentId);
+            const result = await ExtractionKernel.extract(input);
 
             // Assert
-            expect(mockedStorageDriver.fetchDocument).toHaveBeenCalledWith(mockDocumentId);
-            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText);
-            expect(mockedExtractionQAAgent.validate).toHaveBeenCalledWith(mockDocumentText, mockExtractedConcepts);
-            expect(result).toEqual(mockFailedQaResult.validatedConcepts);
-            expect(consoleWarnSpy).toHaveBeenCalledWith(
-                `QA validation failed for documentId: ${mockDocumentId}. Issues:`,
-                mockFailedQaResult.issues
-            );
-            consoleWarnSpy.mockRestore();
+            // Note: current ExtractionKernel researcherKernel reuses creatorKernel logic
+            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText, undefined, 'creator');
+            expect(result).toEqual(mockExtractedConcepts);
         });
 
-        it('should throw an error if StorageDriver.fetchDocument fails', async () => {
+        it('should successfully call ExtractionEngine.extract and return concepts for "educator" persona', async () => {
             // Arrange
-            const storageError = new Error('Document not found');
-            mockedStorageDriver.fetchDocument.mockRejectedValue(storageError);
+            mockedExtractionEngine.extract.mockResolvedValue(mockExtractedConcepts);
+            const input = { persona: 'educator' as const, documentText: mockDocumentText };
 
-            // Act & Assert
-            await expect(ExtractionKernel.handle(mockDocumentId)).rejects.toThrow(storageError);
-            expect(mockedExtractionEngine.extract).not.toHaveBeenCalled();
-            expect(mockedExtractionQAAgent.validate).not.toHaveBeenCalled();
+            // Act
+            const result = await ExtractionKernel.extract(input);
+
+            // Assert
+            // Note: current ExtractionKernel educatorKernel reuses creatorKernel logic
+            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText, undefined, 'creator');
+            expect(result).toEqual(mockExtractedConcepts);
         });
 
         it('should throw an error if ExtractionEngine.extract fails', async () => {
             // Arrange
             const extractionError = new Error('Extraction process failed');
-            mockedStorageDriver.fetchDocument.mockResolvedValue(mockDocumentText);
             mockedExtractionEngine.extract.mockRejectedValue(extractionError);
+            const input = { persona: 'creator' as const, documentText: mockDocumentText };
 
             // Act & Assert
-            await expect(ExtractionKernel.handle(mockDocumentId)).rejects.toThrow(extractionError);
-            expect(mockedStorageDriver.fetchDocument).toHaveBeenCalledWith(mockDocumentId);
-            expect(mockedExtractionQAAgent.validate).not.toHaveBeenCalled();
+            await expect(ExtractionKernel.extract(input)).rejects.toThrow(extractionError);
+            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText, undefined, 'creator');
         });
 
-        it('should propagate error if ExtractionQAAgent.validate fails', async () => {
+        it('should throw an error for an unsupported persona', async () => {
             // Arrange
-            const qaError = new Error('QA validation process crashed');
-            mockedStorageDriver.fetchDocument.mockResolvedValue(mockDocumentText);
-            mockedExtractionEngine.extract.mockResolvedValue(mockExtractedConcepts);
-            mockedExtractionQAAgent.validate.mockRejectedValue(qaError);
+            const input = { persona: 'unsupported-persona' as Persona, documentText: mockDocumentText };
 
             // Act & Assert
-            await expect(ExtractionKernel.handle(mockDocumentId)).rejects.toThrow(qaError);
-            expect(mockedStorageDriver.fetchDocument).toHaveBeenCalledWith(mockDocumentId);
-            expect(mockedExtractionEngine.extract).toHaveBeenCalledWith(mockDocumentText);
+            await expect(ExtractionKernel.extract(input)).rejects.toThrow('Unsupported persona: unsupported-persona');
+            expect(mockedExtractionEngine.extract).not.toHaveBeenCalled();
         });
     });
 }); 

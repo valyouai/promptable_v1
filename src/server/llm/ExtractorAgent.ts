@@ -5,9 +5,9 @@ import { jsonrepair } from 'jsonrepair';
 // import type OpenAI from 'openai'; // Keep for ChatCompletionMessageParam type if DeepSeekAdapter reuses it -> Removing as changing messages type
 
 export class ExtractorAgent {
-    public static async extract(chunks: string[]): Promise<ExtractedConcepts> {
+    public static async extract(chunkText: string): Promise<ExtractedConcepts> {
         // 4.a Combine the chunks into full document text
-        const documentText = chunks.join(" ");
+        // const documentText = chunks.join(" "); // Removed this line
 
         // 4.b Construct schema-constrained prompt
         const promptForSystem = `
@@ -39,7 +39,7 @@ Output your answer in raw JSON format, no explanation.
             },
             {
                 role: "user", // User role providing the specific text to process
-                content: documentText // The actual document content
+                content: chunkText // Use chunkText directly
             }
         ];
 

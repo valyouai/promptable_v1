@@ -1,5 +1,6 @@
 // harness/ExtractionHarness.test.ts
 
+import { describe, it, expect } from '@jest/globals';
 import { ExtractionEngine } from '../src/server/extraction/ExtractionEngine';
 
 describe('ExtractionEngine Phase 4 Integration', () => {
@@ -21,7 +22,7 @@ describe('ExtractionEngine Phase 4 Integration', () => {
             keywords: ["deep learning", "cancer", "diagnosis"]
         };
 
-        const result = await ExtractionEngine.extract(mockDocumentText, mockContext);
+        const result = await ExtractionEngine.extract(mockDocumentText, mockContext, 'researcher');
 
         expect(result['Research Objective']).toBeDefined();
         expect(result['Methods']).toContain('CNN');
