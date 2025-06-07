@@ -1,12 +1,13 @@
 "use client"
-import React, { useState, useEffect } from 'react';
+// import React, { useState, useEffect } from 'react'; // Old import
+import * as React from 'react'; // Using namespace import for React
 import { useParams } from 'next/navigation'; // Import useParams hook
 import DocumentUploader from '@/components/DocumentUploader';
 import AnalysisPreview from '@/components/AnalysisPreview';
 import SystemPromptGenerator from '@/components/SystemPromptGenerator';
 import ExportOptions from '@/components/ExportOptions';
-import { ExtractedConcepts, SystemPromptResult } from '@/types';
-import { GenerationConfig, Persona } from '@/lib/prompt-templates';
+import { ExtractedConcepts, SystemPromptResult, ExtractionResult } from '@/types';
+import { Persona } from '@/lib/prompt-templates';
 
 // interface PageProps {
 //   // params: { persona: string; contentType: string }; // No longer needed as prop
@@ -16,19 +17,20 @@ const GenerationPage: React.FC = ({ }) => {
   const params = useParams();
   const persona: Persona = 'creator'; // Hardcode persona as 'creator'
   const contentType = params.contentType as string; // Access contentType via hook and cast to string
-  // const [uploadedFile, setUploadedFile] = useState<File | null>(null); // Removed as not currently used
-  const [extractedConcepts, setExtractedConcepts] = useState<ExtractedConcepts | null>(null);
-  const [isProcessingDocument, setIsProcessingDocument] = useState<boolean>(false);
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState<boolean>(false);
-  const [generatedPromptResult, setGeneratedPromptResult] = useState<SystemPromptResult | undefined>(undefined);
-  const [documentId, setDocumentId] = useState<string>(''); // Placeholder for document ID
+  // const [uploadedFile, setUploadedFile] = React.useState<File | null>(null); // Removed as not currently used
+  const [extractedConcepts, setExtractedConcepts] = React.useState<ExtractedConcepts | null>(null);
+  const [isProcessingDocument, setIsProcessingDocument] = React.useState<boolean>(false);
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = React.useState<boolean>(false);
+  const [generatedPromptResult, setGeneratedPromptResult] = React.useState<SystemPromptResult | undefined>(undefined);
+  const [documentId, setDocumentId] = React.useState<string>(''); // Placeholder for document ID
+  const [fullExtractionResult, setFullExtractionResult] = React.useState<ExtractionResult | null>(null); // New state variable
 
-  useEffect(() => {
+  React.useEffect(() => {
     // In a real application, you might fetch initial data or document status here
     // For MVP, we're assuming a fresh start or relying on user interaction.
   }, [persona, contentType]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     // Effect to log when generatedPromptResult changes
     console.log('[Creator Page useEffect] generatedPromptResult state updated:', generatedPromptResult);
     if (generatedPromptResult) {
@@ -39,122 +41,129 @@ const GenerationPage: React.FC = ({ }) => {
 
   const handleDocumentUpload = async (file: File) => {
     setIsProcessingDocument(true);
-    setExtractedConcepts(null);
-    setGeneratedPromptResult(undefined);
-    // It's good practice to also reset documentId if a new file is uploaded
-    // unless the backend handles document versioning under the same ID, 
-    // but for now, we'll stick to the user's provided patch structure.
-    // setDocumentId(''); 
+    setExtractedConcepts(null); // Reset previous concepts
+    setFullExtractionResult(null); // Reset previous full result
+    setGeneratedPromptResult(undefined); // Reset previous prompt result
+    // Consider if documentId needs reset or if it's still relevant for other flows.
+    // setDocumentId(''); // For now, let's keep documentId management separate if used by other parts.
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/upload-document', {
+      // Call the new /api/runExtraction route
+      const response = await fetch('/api/runExtraction', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        // More specific error message based on response status if available
-        const errorText = await response.text();
-        throw new Error(`Document upload failed: ${response.status} ${errorText || 'Unknown error'}`);
-      }
-
-      // Assuming UploadResponse is implicitly { documentId: string } or similar based on usage.
-      // If UploadResponse is a defined type, it should be imported.
-      const uploadData: { documentId: string } = await response.json(); 
-      console.log("Upload Response Received:", uploadData);
-      setDocumentId(uploadData.documentId);
-
-      // 🔥 New live extraction logic begins here:
-      if (uploadData.documentId) { // Only proceed if documentId was successfully obtained
-        console.log(`Attempting to extract concepts for documentId: ${uploadData.documentId}`);
-        const extractionResponse = await fetch(`/api/extract-concepts/${uploadData.documentId}`);
-
-        if (!extractionResponse.ok) {
-          const errorText = await extractionResponse.text();
-          throw new Error(`Concept extraction failed: ${extractionResponse.status} ${errorText || 'Unknown error'}`);
+        // Try to get more specific error from response body
+        let errorDetails = 'Extraction failed';
+        try {
+            const errorData = await response.json();
+            errorDetails = errorData.error || errorData.details || response.statusText;
+        } catch {
+            // Fallback if response body is not JSON or error field doesn't exist
+            errorDetails = `Extraction failed with status: ${response.status} ${response.statusText}`;
         }
-
-        const actualConcepts: ExtractedConcepts = await extractionResponse.json();
-        setExtractedConcepts(actualConcepts);
-        console.log('Successfully extracted and set concepts:', actualConcepts);
-      } else {
-        throw new Error('No documentId received from upload, cannot extract concepts.');
+        console.error('Extraction failed:', errorDetails);
+        alert(`Error: ${errorDetails}`); // Show error to user
+        return; // Stop further processing
       }
 
-    } catch (error) {
-      console.error('Error in document upload or concept extraction process:', error);
-      // Provide a more user-friendly error message
-      if (error instanceof Error) {
-        alert(`An error occurred: ${error.message}. Please try again.`);
-      } else {
-        alert('An unknown error occurred during document processing. Please try again.');
+      const extractionResult: ExtractionResult = await response.json();
+      console.log('Extraction Complete:', extractionResult);
+
+      // Set new state variables
+      setExtractedConcepts(extractionResult.finalConcepts); 
+      setFullExtractionResult(extractionResult); 
+      setDocumentId(extractionResult.documentId ?? ''); // Set documentId from extraction result
+      // If the new API returns a documentId as part of ExtractionResult, set it here if needed.
+      // For example: if (extractionResult.documentId) setDocumentId(extractionResult.documentId);
+
+    } catch (err) {
+      console.error('Error during document upload and extraction:', err);
+      let errorMessage = "An unknown error occurred.";
+      if (err instanceof Error) {
+        errorMessage = err.message;
       }
-      // Ensure states are reset on error
+      alert(`Error: ${errorMessage}`);
+      // Ensure states are reset on catch
       setExtractedConcepts(null);
-      setDocumentId('');
+      setFullExtractionResult(null);
     } finally {
       setIsProcessingDocument(false);
     }
   };
 
-  // Refactored to only accept `config` as an argument.
-  // Other values (extractedConcepts, documentId, persona, contentType)
-  // are accessed directly from this component's state or scope.
-  const handleGeneratePrompt = async (config: GenerationConfig) => {
+  // Updated handleGeneratePrompt function as per user's Phase 11B plan
+  const handleGeneratePrompt = async (/* Removed config: GenerationConfig based on new plan */) => {
     setIsGeneratingPrompt(true);
+    // setGeneratedPromptResult(undefined); // Resetting it here might be good, but user's snippet didn't explicitly show it this time.
+                                        // The prior version *did* reset it.
+                                        // For safety and consistency, let's keep the reset.
     setGeneratedPromptResult(undefined);
 
-    // Using `extractedConcepts` from component state
-    if (!extractedConcepts) {
-      alert('Please upload and process a document first to extract concepts.');
-      setIsGeneratingPrompt(false);
-      return;
+    if (!fullExtractionResult || !fullExtractionResult.finalConcepts) {
+        console.error('[Creator Page] No full extraction result or final concepts available to generate prompt.');
+        alert('Please ensure a document has been processed and concepts are extracted before generating a prompt.');
+        setIsGeneratingPrompt(false);
+        return;
     }
 
-    // Using `documentId`, `persona`, `contentType`, and `extractedConcepts`
-    // directly from the component's state/scope.
+    // Persona and contentType are available in the component's scope.
+    // documentId is still in state but might be empty if not set by the new extraction flow.
+    // The API for generate-system-prompt might need to handle an optional/empty documentId.
     console.log('Attempting to generate prompt with:', {
-      documentId,         // From component state
-      persona,            // From component scope
-      contentType,        // From component scope (derived from params)
-      focusAreas: config.focusAreas,
-      complexityLevel: config.complexityLevel,
-      outputStyle: config.outputStyle,
-      extractedConcepts,  // From component state
+        persona,
+        contentType,
+        extractedConcepts: fullExtractionResult.finalConcepts,
+        // documentId, // Not explicitly included in the user's new body for generate-system-prompt
+                       // If the API needs it, it should be added here.
     });
 
     try {
-      const response = await fetch('/api/generate-system-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          documentId,         // From component state
-          persona,            // From component scope
-          contentType,        // From component scope
-          focusAreas: config.focusAreas,
-          complexityLevel: config.complexityLevel,
-          outputStyle: config.outputStyle,
-          extractedConcepts,  // From component state
-        }),
-      });
+        const response = await fetch('/api/generate-system-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                persona: persona, 
+                contentType: contentType,
+                extractedConcepts: fullExtractionResult.finalConcepts, // Correctly using finalConcepts
+                // documentId: documentId, // If API needs it
+            }),
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to generate system prompt.');
-      }
+        if (!response.ok) {
+            let errorDetails = 'Prompt generation failed.';
+            try {
+                const errorData = await response.json();
+                errorDetails = errorData.error || errorData.details || response.statusText;
+            } catch {
+                errorDetails = `Prompt generation failed. Status: ${response.status} ${response.statusText}`;
+            }
+            console.error('Error generating system prompt:', errorDetails);
+            alert(`Error: ${errorDetails}`);
+            // No explicit re-throw here, error is alerted, function will proceed to finally.
+            return; // Explicitly return to avoid setting generatedPromptResult on failure.
+        }
 
-      const result: SystemPromptResult = await response.json();
-      console.log('[Creator Page] Client received API response for generate-system-prompt:', result);
-      setGeneratedPromptResult(result);
+        // Assuming the API returns an object like { generatedPrompt: string } or the full SystemPromptResult
+        // Your previous code expected SystemPromptResult. Let's stick to that if data matches.
+        // Your new snippet for handleGeneratePrompt expects data.generatedPrompt for the string itself.
+        // Let's assume the API /api/generate-system-prompt returns { systemPrompt: string, ...other SystemPromptResult fields ...}
+        const resultData: SystemPromptResult = await response.json(); 
+        console.log('[Creator Page] Received API response for generate-system-prompt:', resultData);
+        setGeneratedPromptResult(resultData); // Store the full SystemPromptResult object
+
     } catch (error) {
-      console.error('Error generating system prompt:', error);
-      alert('Failed to generate system prompt. Please try again.');
+        console.error('Error in handleGeneratePrompt catch block:', error);
+        alert(`An error occurred while generating the prompt: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
-      setIsGeneratingPrompt(false);
+        setIsGeneratingPrompt(false);
     }
-  };
+};
 
   // Commenting out or removing render phase logs for a cleaner console during normal operation
   // console.log('[Creator Page Render] Value of generatedPromptResult during render:', generatedPromptResult);
@@ -169,7 +178,7 @@ const GenerationPage: React.FC = ({ }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="col-span-1">
           {/* Conditionally render DocumentUploader: only if extractedConcepts is null */}
-          {!extractedConcepts && (
+          {!extractedConcepts && !fullExtractionResult && ( // Also hide if fullExtractionResult is present, assuming it means processing is done
             <DocumentUploader
               onUpload={handleDocumentUpload}
               acceptedTypes={['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']}
@@ -181,7 +190,7 @@ const GenerationPage: React.FC = ({ }) => {
           {extractedConcepts && ( // Show analysis preview if concepts are extracted
             <div className="mt-8">
               <AnalysisPreview
-                documentId={documentId}
+                documentId={documentId} // This documentId might need to be sourced from fullExtractionResult if that becomes the new flow
                 extractedConcepts={extractedConcepts}
               />
             </div>
@@ -196,15 +205,25 @@ const GenerationPage: React.FC = ({ }) => {
             />
           )}
 
-          {generatedPromptResult && (
+          {generatedPromptResult && generatedPromptResult.systemPrompt && (
             <div className="mt-8">
-              <h3 className="text-lg font-semibold mb-2 text-gray-800">Generated Prompt:</h3>
+              <h3 className="text-lg font-semibold mb-2 text-gray-800">Generated System Prompt</h3>
               <div className="rounded-md border border-gray-700 dark:border-gray-600">
                 <pre className="whitespace-pre-wrap font-mono text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 p-4 rounded text-sm">
                   {generatedPromptResult.systemPrompt}
                 </pre>
               </div>
               <ExportOptions systemPrompt={generatedPromptResult.systemPrompt} />
+            </div>
+          )}
+
+          {/* Added UI Display for fullExtractionResult as per Step 4 */}
+          {fullExtractionResult && (
+            <div className="mt-8">
+              <h2 className="text-lg font-semibold mb-2">Full Extraction Result</h2>
+              <pre className="bg-gray-100 dark:bg-gray-900 dark:text-gray-100 p-4 rounded text-sm overflow-x-auto">
+                {JSON.stringify(fullExtractionResult, null, 2)}
+              </pre>
             </div>
           )}
         </div>

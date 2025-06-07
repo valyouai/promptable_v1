@@ -1,56 +1,40 @@
-import type { ExtractedConcepts } from '@/types';
-import { StorageDriver } from '@/lib/extraction/StorageDriver';
-import { ExtractionEngine } from '@/server/extraction/ExtractionEngine';
-import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
-import { SemanticChunker, Chunk } from '@/lib/chunking/SemanticChunker';
-import { ConceptAggregator } from '@/server/extraction/ConceptAggregator';
-import { config } from '@/lib/config';
+import { ExtractedConcepts } from '@/types';
+import { DocumentContext } from './PromptCompiler';
+import { ExtractionEngine } from './ExtractionEngine';
+
+export type Persona = 'creator' | 'researcher' | 'educator';
+
+interface ExtractionKernelInput {
+    persona: Persona;
+    documentText: string;
+    context?: unknown;
+}
 
 export class ExtractionKernel {
-    static async handle(documentId: string): Promise<ExtractedConcepts> {
-        console.log(`[KERNEL] Starting extraction process for documentId: ${documentId}`);
-        const documentText = await StorageDriver.fetchDocument(documentId);
-
-        const modelName = config.openai.modelName;
-
-        console.log(`[KERNEL] Chunking documentId: ${documentId} using model: ${modelName} for token counting.`);
-        const chunks: Chunk[] = SemanticChunker.chunkDocument(documentText, modelName);
-        console.log(`[KERNEL] Document split into ${chunks.length} chunks for documentId: ${documentId}`);
-
-        const allChunkConcepts: ExtractedConcepts[] = [];
-
-        for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            console.log(`[KERNEL] Extracting concepts from chunk ${i + 1}/${chunks.length} (tokens: ${chunk.tokenCount}) for documentId: ${documentId}`);
-            try {
-                const chunkConcepts = await ExtractionEngine.extract(chunk.text);
-                allChunkConcepts.push(chunkConcepts);
-                console.log(`[KERNEL] Successfully extracted concepts from chunk ${i + 1} for documentId: ${documentId}`);
-            } catch (error) {
-                console.error(`[KERNEL] Error extracting concepts from chunk ${i + 1} for documentId: ${documentId}`, error);
-                allChunkConcepts.push({ principles: [], methods: [], frameworks: [], theories: [] });
-            }
+    public static async extract(input: ExtractionKernelInput): Promise<ExtractedConcepts> {
+        switch (input.persona) {
+            case 'creator':
+                return await this.creatorKernel(input.documentText, input.context);
+            case 'researcher':
+                return await this.researcherKernel(input.documentText, input.context);
+            case 'educator':
+                return await this.educatorKernel(input.documentText, input.context);
+            default:
+                throw new Error(`Unsupported persona: ${input.persona}`);
         }
+    }
 
-        console.log(`[KERNEL] Aggregating and de-duplicating concepts for documentId: ${documentId}`);
-        const aggregatedConcepts = ConceptAggregator.aggregateAndDeduplicate(allChunkConcepts);
-        console.log(
-            `[KERNEL] Aggregation and de-duplication complete. Total concepts - Principles: ${aggregatedConcepts.principles.length}, Methods: ${aggregatedConcepts.methods.length}, Frameworks: ${aggregatedConcepts.frameworks.length}, Theories: ${aggregatedConcepts.theories.length} for documentId: ${documentId}`
-        );
+    private static async creatorKernel(documentText: string, context?: unknown): Promise<ExtractedConcepts> {
+        return ExtractionEngine.extract(documentText, context as DocumentContext | undefined, 'creator');
+    }
 
-        console.log(`[KERNEL] Performing QA validation on aggregated concepts for documentId: ${documentId}`);
-        const qaResult = await ExtractionQAAgent.validate(documentText, aggregatedConcepts);
+    private static async researcherKernel(documentText: string, context?: unknown): Promise<ExtractedConcepts> {
+        // ⚠ TEMPORARY: While researcher schema not yet implemented, we reuse creator logic for now
+        return await this.creatorKernel(documentText, context);
+    }
 
-        if (!qaResult.isValid) {
-            console.warn(`[KERNEL] QA: Validation FAILED for documentId: ${documentId}. Confidence: ${qaResult.confidenceScore}. Issues:`, qaResult.issues);
-        } else {
-            console.log(`[KERNEL] QA: Validation PASSED for documentId: ${documentId}. Confidence: ${qaResult.confidenceScore}`);
-        }
-        if (qaResult.issues.length > 0 && qaResult.isValid) {
-            console.log(`[KERNEL] QA: Warnings present for documentId: ${documentId}:`, qaResult.issues);
-        }
-
-        console.log(`[KERNEL] Completed extraction process for documentId: ${documentId}. Returning concepts.`);
-        return qaResult.validatedConcepts;
+    private static async educatorKernel(documentText: string, context?: unknown): Promise<ExtractedConcepts> {
+        // ⚠ TEMPORARY: While educator schema not yet implemented, we reuse creator logic for now
+        return await this.creatorKernel(documentText, context);
     }
 } 

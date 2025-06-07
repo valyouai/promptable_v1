@@ -8,80 +8,78 @@
  * and context-specific prompt segments.
  */
 
-export type DocumentContext = {
-    title?: string;
-    abstract?: string;
-    keywords?: string[];
-    domain?: string;
-    additionalNotes?: string;
-};
-
 export class PromptCompiler {
-    static compile(context: DocumentContext): string {
-        const systemPreamble = this.buildPreamble();
-        const schemaInstructions = this.buildSchemaInstructions();
-        const fewShotExamples = this.buildFewShotExamples();
-        const contextInjection = this.buildContextInjection(context);
-
-        return [
-            systemPreamble,
-            schemaInstructions,
-            fewShotExamples,
-            contextInjection,
-        ].join('\n\n');
+    // Master compile entrypoint (now async because we're preparing for future persona-specific dynamic inserts)
+    public static async compile(
+        documentText: string,
+        context: DocumentContext,
+        persona: 'creator' | 'researcher' | 'educator'
+    ): Promise<{ systemPrompt: string; userPrompt: string }> {
+        switch (persona) {
+            case 'creator':
+                return this.compileCreator(documentText);
+            case 'researcher':
+            case 'educator':
+                return this.compileCreator(documentText); // default passthrough for now
+            default:
+                throw new Error(`Unsupported persona: ${persona}`);
+        }
     }
 
-    private static buildPreamble(): string {
-        return `You are a highly specialized academic concept extraction agent.
-  Your task is to extract structured research concepts from scientific papers into clearly labeled fields.`;
+    // Creator Persona Prompt
+    private static compileCreator(documentText: string): { systemPrompt: string; userPrompt: string } {
+        const systemPrompt = `
+You are an academic research extraction engine. Your task is to extract key concepts from research papers into a structured JSON object.
+
+⚠️ OUTPUT RULES — STRICT JSON ENFORCEMENT:
+- You MUST return only a single valid JSON object.
+- DO NOT include any natural language, explanations, preambles, markdown, headings, or commentary.
+- Output must begin with '{' and end with '}'.
+- The entire output must be strictly parsable as valid JSON.
+
+Here is the exact schema you must produce:
+
+{
+  "principles": [],
+  "methods": [],
+  "frameworks": [],
+  "theories": [],
+  "Research Objective": "",
+  "Methods": "",
+  "Dataset(s)": "",
+  "Key Findings": "",
+  "Limitations": "",
+  "Future Work": "",
+  "Applications": ""
+}
+
+Each field:
+- "principles", "methods", "frameworks", "theories" → extract as arrays of strings.
+- Remaining fields → extract as strings. If not found, output "Not explicitly mentioned." as the field value.
+- Never omit fields, even if empty.
+
+REMEMBER: DO NOT ADD ANY NON-JSON TEXT.
+        `.trim();
+
+        const userPrompt = `
+Extract the key concepts from the following document and produce the required JSON object:
+
+${documentText}
+        `.trim();
+
+        return { systemPrompt, userPrompt };
     }
 
-    private static buildSchemaInstructions(): string {
-        return `Extract the following fields:
-  - Research Objective
-  - Methods
-  - Dataset(s)
-  - Key Findings
-  - Limitations
-  - Future Work
-  - Applications
-  - Citations
-  - Keywords
-  
-  Always return the output in JSON format with strict field adherence.`;
+    // Researcher Persona (placeholder: routes to creator template for now)
+    private static async compileResearcher(documentText: string): Promise<{ systemPrompt: string; userPrompt: string }> {
+        return this.compileCreator(documentText);
     }
 
-    private static buildFewShotExamples(): string {
-        return `Example:
-  Input:
-  Title: "Deep Learning for Cancer Diagnosis"
-  Abstract: "We propose a convolutional neural network to improve cancer diagnosis..."
-  
-  Output:
-  {
-    "Research Objective": "Improve cancer diagnosis using CNN models.",
-    "Methods": "Convolutional Neural Networks, supervised training on labeled medical data.",
-    "Dataset(s)": "LIDC-IDRI dataset",
-    "Key Findings": "CNN outperformed traditional models by 15% accuracy.",
-    "Limitations": "Limited dataset diversity; model may not generalize to rare cancers.",
-    "Future Work": "Expand dataset and test on rare cancer types.",
-    "Applications": "Medical diagnosis, clinical decision support.",
-    "Citations": [],
-    "Keywords": ["cancer diagnosis", "CNN", "deep learning"]
-  }`;
-    }
-
-    private static buildContextInjection(context: DocumentContext): string {
-        const { title, abstract, keywords, domain, additionalNotes } = context;
-
-        let injection = `Document Context:`;
-
-        if (title) injection += `\nTitle: ${title}`;
-        if (abstract) injection += `\nAbstract: ${abstract}`;
-        if (keywords?.length) injection += `\nKeywords: ${keywords.join(", ")}`;
-        if (domain) injection += `\nDomain: ${domain}`;
-        if (additionalNotes) injection += `\nNotes: ${additionalNotes}`;
-
-        return injection;
+    // Educator Persona (placeholder: routes to creator template for now)
+    private static async compileEducator(documentText: string): Promise<{ systemPrompt: string; userPrompt: string }> {
+        return this.compileCreator(documentText);
     }
 }
+
+// Export DocumentContext to prevent downstream type errors
+export type DocumentContext = unknown;

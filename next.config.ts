@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  reactStrictMode: true,
   transpilePackages: [],
+
+  experimental: {
+    esmExternals: true,
+  },
+
+  swcMinify: true,
+  swcPlugins: [],
 
   webpack: (config, { isServer, dev }) => {
     // Standard Webpack experiments for WASM support

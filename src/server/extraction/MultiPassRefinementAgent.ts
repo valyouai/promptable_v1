@@ -1,7 +1,7 @@
 // src/server/extraction/MultiPassRefinementAgent.ts
 
 import { ExtractedConcepts } from '@/types';
-import { OpenAIAdapter } from '../llm/OpenAIAdapter';
+import { OpenAIAdapter } from '@/server/llm/OpenAIAdapter';
 
 type ReinforceableField =
     | 'Research Objective'
@@ -28,9 +28,21 @@ export class MultiPassRefinementAgent {
 
         for (const field of this.fieldsToReinforce) {
             const value = updatedConcepts[field];
-            if (!value || (typeof value === 'string' && value.trim() === '')) {
+
+            const needsRepair =
+                !value ||
+                (typeof value === 'string' && (
+                    value.trim() === '' ||
+                    value.trim() === 'Not explicitly mentioned.' ||
+                    value.trim().length < 50
+                ));
+
+            if (needsRepair) {
+                console.log(`[MultiPassRefinementAgent] Repair triggered for field: ${field}`);
                 const patchedValue = await this.requestFieldRepair(field, documentText);
                 updatedConcepts[field] = patchedValue;
+            } else {
+                console.log(`[MultiPassRefinementAgent] Skipped repair for field: ${field}`);
             }
         }
 
@@ -38,16 +50,14 @@ export class MultiPassRefinementAgent {
     }
 
     private static async requestFieldRepair(field: ReinforceableField, documentText: string): Promise<string> {
-        const systemPrompt = `You are an academic extraction assistant. The following research paper text may be missing the "${field}" field. Based on the document content, attempt to generate a best-effort extraction for "${field}". If truly unavailable, return: "Not explicitly mentioned."`;
+        const systemPrompt = `You are an academic extraction assistant. The following research paper text may be missing or incomplete for the field "${field}". Please extract or improve the best possible value for "${field}". If no data can be extracted, return: "Not explicitly mentioned."`;
 
-        // Using OpenAIAdapter
         const llmResponse = await OpenAIAdapter.call({
             systemPrompt,
             userPrompt: documentText
         });
 
-        // llmResponse from OpenAIAdapter (when not JSON) is { output: string }
-        // The string itself is the direct answer from the LLM.
-        return llmResponse.output ?? "Not explicitly mentioned.";
+        const responseObject = llmResponse as Record<string, unknown>;
+        return typeof responseObject[field] === 'string' ? (responseObject[field] as string) : "Not explicitly mentioned.";
     }
 } 

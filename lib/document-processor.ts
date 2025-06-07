@@ -50,6 +50,53 @@ export async function extractTextFromPdf(file: File): Promise<string> {
     }
 }
 
+// New function to handle buffer input directly
+export async function extractTextFromPdfBuffer(
+    buffer: Buffer,
+    filename: string,
+    contentType: string = 'application/pdf' // Default contentType
+): Promise<string> {
+    console.log(`[extractTextFromPdfBuffer] Received buffer for file: ${filename}, Type: ${contentType}, Size: ${buffer.length}. Sending to microservice at ${PDF_EXTRACTION_SERVICE_URL}.`);
+
+    const formData = new FormData();
+    formData.append('file', buffer, {
+        filename: filename,
+        contentType: contentType,
+    });
+
+    try {
+        const response = await fetch(PDF_EXTRACTION_SERVICE_URL, {
+            method: 'POST',
+            body: formData as any, // FormData type from 'form-data' might not perfectly align with fetch's BodyInit
+            headers: formData.getHeaders(),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            const errorMessage = `PDF extraction microservice failed with status: ${response.status} ${response.statusText} - ${errorBody}`;
+            console.error(`[extractTextFromPdfBuffer] Error from microservice: ${errorMessage}`);
+            throw new Error(errorMessage);
+        }
+
+        const successBody = await response.json();
+        if (typeof successBody.text !== 'string') {
+            console.error('[extractTextFromPdfBuffer] Microservice response did not contain a valid text string.', successBody);
+            throw new Error('Invalid response format from PDF extraction microservice.');
+        }
+
+        console.log('[extractTextFromPdfBuffer] Text successfully extracted by microservice. Length:', successBody.text.length);
+        return successBody.text;
+
+    } catch (error: unknown) {
+        let errorMessage = 'Unknown error during PDF microservice call via buffer';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        console.error(`[extractTextFromPdfBuffer] Error calling PDF extraction microservice: ${errorMessage}`, error);
+        throw new Error(`Failed to extract text from PDF via microservice (buffer): ${errorMessage}`);
+    }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function extractTextFromDocx(file: File): Promise<string> {
     console.log('[extractTextFromDocx] Received file:', file.name, 'Type:', file.type, 'Size:', file.size);
