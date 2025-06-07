@@ -1,5 +1,7 @@
 import type { ExtractedConcepts, QAValidationResult } from '@/types';
 // import openaiClient from '@/lib/openai'; // For future LLM-based QA
+// Import DomainSchema to validate field names
+import { DOMAIN_SCHEMA } from '@/server/llm/DomainSchema';
 
 const MIN_CONCEPT_LENGTH = 3; // Example minimum length for a concept string
 const MAX_CONCEPT_LENGTH = 250; // Example maximum length
@@ -14,48 +16,53 @@ export class ExtractionQAAgent {
         let isValid = true;
         let confidenceScore = 1.0; // Start with full confidence
 
-        // Ensure all basic categories are present (even if empty arrays)
-        if (concepts.principles === undefined) {
-            issues.push('Missing "principles" category in extracted concepts.');
-            concepts.principles = []; // Ensure category exists for consistent structure
-            isValid = false;
-            confidenceScore -= 0.2;
+        // Ensure all basic categories from DOMAIN_SCHEMA are present (even if empty arrays)
+        for (const schemaField of DOMAIN_SCHEMA.fields) {
+            if (concepts[schemaField] === undefined) {
+                issues.push(`Missing "${schemaField}" category in extracted concepts (expected by schema).`);
+                (concepts[schemaField] as string[]) = []; // Ensure category exists for consistent structure
+                isValid = false;
+                confidenceScore -= 0.1;
+            }
         }
-        if (concepts.methods === undefined) {
-            issues.push('Missing "methods" category in extracted concepts.');
-            concepts.methods = [];
-            isValid = false;
-            confidenceScore -= 0.2;
-        }
-        if (concepts.frameworks === undefined) {
-            issues.push('Missing "frameworks" category in extracted concepts.');
-            concepts.frameworks = [];
-            isValid = false;
-            confidenceScore -= 0.2;
-        }
-        if (concepts.theories === undefined) {
-            issues.push('Missing "theories" category in extracted concepts.');
-            concepts.theories = [];
-            isValid = false;
-            confidenceScore -= 0.2;
+        // Handle 'notes' specifically. 
+        // The original condition `DOMAIN_SCHEMA.fields.indexOf('notes' as any) === -1` is always true 
+        // because 'notes' is not in DOMAIN_SCHEMA.fields. So, we only need to check if concepts.notes is undefined.
+        if (concepts.notes === undefined) {
+            // If notes is a defined part of ExtractedConcepts type, ensure it is initialized if missing.
+            // Depending on strictness, this could be an empty string or just a log.
+            // For now, if ExtractedConcepts expects notes: string (even if optional), ensure it's not undefined causing downstream issues.
+            // concepts.notes = ""; // Example: initialize to empty string. For Phase 13A, let Orchestrator handle final notes default.
+            // issues.push('QA Warning: "notes" field was undefined. Initialized to empty for consistency if expected by type.');
+            // confidenceScore -= 0.01; // Very minor penalty for undefined optional field
         }
 
-        const allConcepts = [
-            ...(concepts.principles || []),
-            ...(concepts.methods || []),
-            ...(concepts.frameworks || []),
-            ...(concepts.theories || []),
-        ];
+        const allConceptsArrays = DOMAIN_SCHEMA.fields.reduce((acc, field) => {
+            const conceptArray = concepts[field];
+            if (Array.isArray(conceptArray)) {
+                acc.push(...conceptArray);
+            }
+            return acc;
+        }, [] as string[]);
 
-        if (allConcepts.length === 0 && (concepts.principles?.length === 0 && concepts.methods?.length === 0 && concepts.frameworks?.length === 0 && concepts.theories?.length === 0)) {
-            issues.push('QA Warning: No concepts were extracted from the document.');
-            // This might not necessarily make isValid = false, depending on requirements
-            // For now, consider it a warning that lowers confidence.
+        if (allConceptsArrays.length === 0) {
+            issues.push('QA Warning: No concepts were extracted from the document across all schema fields.');
             confidenceScore -= 0.3;
         }
 
         for (const categoryName in concepts) {
+            // Schema Anchoring: Check if the categoryName is a valid field as per DomainSchema or a known field like 'notes'
+            if (!DOMAIN_SCHEMA.isValidField(categoryName) && categoryName !== 'notes') {
+                issues.push(`QA Issue: Unknown category "${categoryName}" found in extracted concepts. Not defined in DomainSchema.`);
+                isValid = false;
+                confidenceScore -= 0.15;
+                continue; // Skip further processing for this unknown category
+            }
+
             const categoryConcepts = concepts[categoryName as keyof ExtractedConcepts];
+
+            // Process only array categories for length, content checks here.
+            // 'notes' field if string, would skip this Array.isArray block.
             if (Array.isArray(categoryConcepts)) {
                 if (categoryConcepts.length > MAX_CONCEPTS_PER_CATEGORY) {
                     issues.push(`QA Issue: Category "${categoryName}" has ${categoryConcepts.length} concepts, exceeding the maximum of ${MAX_CONCEPTS_PER_CATEGORY}.`);

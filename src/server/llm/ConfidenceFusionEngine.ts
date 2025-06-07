@@ -3,146 +3,241 @@ import type { DependencyInsight } from './DependencyModel';
 import type { ExtractedConcepts } from '../../../types';
 import { DOMAIN_SCHEMA, type DomainField } from './DomainSchema';
 
+// Added type definitions as per Phase 13B Plan
+export interface ReinforcementFeedback {
+    field: DomainField;
+    recovered: boolean;
+}
+
 export interface FieldConfidence {
     field: DomainField;
-    score: number; // Typically 0.0 to 1.0
+    score: number;
     contributingSignals: {
-        type: 'ambiguity' | 'dependency' | 'presence' | 'reinforcement';
+        type: 'base' | 'ambiguity' | 'dependency' | 'reinforcement' | 'presence'; // Added 'base' for clarity
         details: string;
-        value: number; // The raw value of the signal component
+        value: number;
     }[];
 }
 
 export interface UnifiedConfidenceResult {
-    overallConfidence: number; // Aggregated confidence for the whole extraction
+    overallConfidence: number;
     fieldConfidences: FieldConfidence[];
+    fusionLog?: LoggedFusionSignal[]; // Added fusionLog to output
 }
 
-interface FusionInput {
+// Updated FuseSignalsInput as per Phase 13B Plan
+export interface FuseSignalsInput {
     concepts: ExtractedConcepts;
     ambiguityScores: AmbiguityScore[];
-    // Insights per field: e.g. { principles: [DependencyInsight for principles], ... }
     dependencyInsights?: Partial<Record<DomainField, DependencyInsight[]>>;
-    // Future signals, e.g., reinforcement outcomes
-    // reinforcementFeedback?: ReinforcementOutput;
+    reinforcementSignals?: ReinforcementFeedback[]; // Using new ReinforcementFeedback type
+}
+
+// Define calibration constants as per Phase 13B Plan
+const BASE_CONFIDENCE_PRESENT = 0.8;
+const BASE_CONFIDENCE_ABSENT = 0.5;
+// AMBIGUITY_PENALTY_FACTOR was 0.25 in previous step, plan says 0.5. Using 0.5 as per current plan.
+const AMBIGUITY_PENALTY_FACTOR = 0.5;
+const DEPENDENCY_BONUS_FACTOR = 0.05;
+const REINFORCEMENT_BONUS_FACTOR = 0.05;
+
+// Interface for detailed logging per field
+interface LoggedFusionSignal {
+    field: DomainField;
+    baseScore: number;
+    ambiguityPenalty: number;
+    dependencyBonus: number;
+    reinforcementBonus: number;
+    finalFieldScore: number;
 }
 
 export class ConfidenceFusionEngine {
-    // Base confidence if a field has content and no negative signals
-    private static readonly BASE_CONFIDENCE_PRESENT = 0.8;
-    private static readonly BASE_CONFIDENCE_ABSENT = 0.5; // Neutral confidence for absent but non-critical fields
+    // Constants moved outside the class to be module-level consts as per the plan's structure
+    // The class structure is kept if other static methods or properties are planned for it.
+    // If fuseSignals is the only method, the class wrapper might be optional.
 
-    // Penalties/Bonuses (examples, to be tuned)
-    private static readonly AMBIGUITY_PENALTY_FACTOR = 0.5; // Max penalty from ambiguity
-    // private static readonly DEPENDENCY_BONUS_FACTOR = 0.1; // Max bonus from strong dependencies
-
-    public static fuseSignals(input: FusionInput): UnifiedConfidenceResult {
-        const { concepts, ambiguityScores, dependencyInsights } = input;
+    public static fuseSignals(input: FuseSignalsInput): UnifiedConfidenceResult {
+        const fusionLog: LoggedFusionSignal[] = [];
+        const { concepts, ambiguityScores, dependencyInsights, reinforcementSignals } = input;
         const fieldConfidences: FieldConfidence[] = [];
-        let totalScoreSum = 0;
-        let scoredFieldsCount = 0;
+        let totalScoreSum = 0; // This will sum the *rounded* scores
 
-        for (const field of DOMAIN_SCHEMA.fields) {
-            const fieldKey = field as DomainField;
-            const conceptData = concepts[fieldKey];
-            const hasContent = Array.isArray(conceptData) ? conceptData.length > 0 : !!conceptData;
+        // Iterate over DOMAIN_SCHEMA.fields to ensure all schema-defined fields are considered,
+        // even if not present in concepts (they would be treated as absent).
+        for (const field of DOMAIN_SCHEMA.fields as readonly DomainField[]) {
+            const fieldKey = field;
+            const conceptArray = concepts[fieldKey];
+            const hasContent = Array.isArray(conceptArray) && conceptArray.length > 0;
 
-            let fieldScore = hasContent ? this.BASE_CONFIDENCE_PRESENT : this.BASE_CONFIDENCE_ABSENT;
-            const signals: FieldConfidence['contributingSignals'] = [];
+            let fieldScoreUnrounded = hasContent ? BASE_CONFIDENCE_PRESENT : BASE_CONFIDENCE_ABSENT;
+            const baseScore = fieldScoreUnrounded; // Log the unrounded base for precision in log
 
-            if (hasContent) {
-                signals.push({ type: 'presence', details: 'Field has content', value: this.BASE_CONFIDENCE_PRESENT });
-            } else {
-                signals.push({ type: 'presence', details: 'Field is empty', value: this.BASE_CONFIDENCE_ABSENT });
-            }
+            const currentSignalsLogic: { type: FieldConfidence['contributingSignals'][number]['type'], value: number, details: string }[] = [
+                { type: 'base', value: baseScore, details: hasContent ? 'Content present' : 'Content absent' }
+            ];
 
-            // 1. Factor in Ambiguity Scores
-            const relevantAmbiguities = ambiguityScores.filter(a => a.field === fieldKey);
-            if (relevantAmbiguities.length > 0) {
-                // Simple approach: average ambiguity scores for the field and apply penalty
-                // Ambiguity scores are 0-1 (0=clear, 1=ambiguous). We want to penalize higher ambiguity.
-                const avgAmbiguity = relevantAmbiguities.reduce((sum, a) => sum + a.score, 0) / relevantAmbiguities.length;
-                const penalty = avgAmbiguity * this.AMBIGUITY_PENALTY_FACTOR;
-                fieldScore -= penalty;
-                signals.push({
-                    type: 'ambiguity',
-                    details: `Avg ambiguity ${avgAmbiguity.toFixed(2)} resulted in -${penalty.toFixed(2)} penalty`,
-                    value: -penalty
-                });
-            }
+            const fieldAmbiguities = ambiguityScores.filter(a => a.field === fieldKey);
+            const avgAmbiguity = fieldAmbiguities.reduce((sum, a) => sum + a.score, 0) / (fieldAmbiguities.length || 1);
+            const ambiguityPenalty = avgAmbiguity * AMBIGUITY_PENALTY_FACTOR;
+            fieldScoreUnrounded -= ambiguityPenalty;
+            currentSignalsLogic.push({ type: 'ambiguity', value: -ambiguityPenalty, details: `Avg ambiguity ${avgAmbiguity.toFixed(3)} (Factor: ${AMBIGUITY_PENALTY_FACTOR})` });
 
-            // 2. Factor in Dependency Insights (Placeholder)
-            if (dependencyInsights && dependencyInsights[fieldKey]) {
-                const fieldDeps = dependencyInsights[fieldKey] || [];
-                if (fieldDeps.length > 0) {
-                    // Example: Add a small bonus if strong dependencies are present and also have content
-                    // This logic would need to be more sophisticated, e.g., checking confidence of dependent fields.
-                    // For now, just a note.
-                    signals.push({ type: 'dependency', details: `Field has ${fieldDeps.length} defined dependencies (logic pending)`, value: 0 });
+            const relatedDependencies = dependencyInsights?.[fieldKey] || [];
+
+            // Safecast concepts to a string-indexed map for robust lookup in filter
+            const conceptsMap: Record<string, string[] | undefined> = {};
+            for (const key in concepts) {
+                if (Object.prototype.hasOwnProperty.call(concepts, key) && DOMAIN_SCHEMA.isValidField(key)) {
+                    const conceptValue = concepts[key as DomainField];
+                    if (Array.isArray(conceptValue)) {
+                        conceptsMap[key] = conceptValue as string[] | undefined;
+                    }
                 }
             }
 
-            // 3. Future: Factor in Reinforcement Agent feedback
+            const activeDependencyCount = relatedDependencies.filter(dep => {
+                const dependentConceptData = conceptsMap[dep.field];
+                const isDepActive = Array.isArray(dependentConceptData) && dependentConceptData.length > 0;
+                return isDepActive;
+            }).length;
 
-            fieldScore = Math.max(0, Math.min(1, fieldScore)); // Clamp score between 0 and 1
+            const dependencyBonus = activeDependencyCount * DEPENDENCY_BONUS_FACTOR;
+
+            let depDetails = `${activeDependencyCount} active dependencies contributed to bonus. Checked: `;
+            if (relatedDependencies.length > 0) {
+                relatedDependencies.forEach(dep => {
+                    const depConceptData = concepts[dep.field];
+                    const depHasContent = Array.isArray(depConceptData) && depConceptData.length > 0;
+                    depDetails += `${dep.field}(${depHasContent ? 'active' : 'inactive'}, str:${dep.strength}); `;
+                });
+            } else {
+                depDetails = "No defined dependencies for this field.";
+            }
+            fieldScoreUnrounded += dependencyBonus;
+            currentSignalsLogic.push({ type: 'dependency', value: dependencyBonus, details: depDetails + ` (Bonus factor: ${DEPENDENCY_BONUS_FACTOR})` });
+
+            const reinforcement = reinforcementSignals?.some(r => r.field === fieldKey && r.recovered);
+            const reinforcementBonus = reinforcement ? REINFORCEMENT_BONUS_FACTOR : 0;
+            fieldScoreUnrounded += reinforcementBonus;
+            currentSignalsLogic.push({ type: 'reinforcement', value: reinforcementBonus, details: reinforcement ? `Field recovered (Bonus factor: ${REINFORCEMENT_BONUS_FACTOR})` : "No reinforcement recovery for this field." });
+
+            // Clamp the unrounded score first
+            const clampedFieldScore = Math.max(0, Math.min(1, fieldScoreUnrounded));
+
+            // Now, round the clamped score to a consistent precision (e.g., 3 decimal places)
+            // This rounded score is what will be used for summation and final reporting.
+            const finalFieldScoreRounded = parseFloat(clampedFieldScore.toFixed(3));
+
+            fusionLog.push({
+                field: fieldKey,
+                baseScore: baseScore, // Log unrounded for more precision if desired, or round here too
+                ambiguityPenalty: -ambiguityPenalty, // Log actual penalty value
+                dependencyBonus: dependencyBonus,
+                reinforcementBonus: reinforcementBonus,
+                finalFieldScore: finalFieldScoreRounded // Log the final rounded score
+            });
 
             fieldConfidences.push({
                 field: fieldKey,
-                score: parseFloat(fieldScore.toFixed(2)), // Keep it to 2 decimal places
-                contributingSignals: signals
+                score: finalFieldScoreRounded, // Store the rounded score
+                contributingSignals: currentSignalsLogic.map(s => ({ ...s, value: parseFloat(s.value.toFixed(3)) })) // Also round signal values for display
             });
 
-            totalScoreSum += fieldScore;
-            scoredFieldsCount++;
+            totalScoreSum += finalFieldScoreRounded; // Sum the rounded scores
         }
 
-        const overallConfidence = scoredFieldsCount > 0 ? totalScoreSum / scoredFieldsCount : 0;
+        // Handle fields in concepts that might not be in DOMAIN_SCHEMA.fields (e.g. 'notes')
+        // This part ensures any other fields like 'notes' are carried over but not part of primary confidence scoring.
+        for (const fieldKey in concepts) {
+            if (!(DOMAIN_SCHEMA.fields as readonly string[]).includes(fieldKey)) {
+                const field = fieldKey as DomainField; // Cast, assuming it might be a known non-array field
+                if (!fieldConfidences.some(fc => fc.field === field)) { // Avoid duplicating if handled above by mistake
+                    // For 'notes' or other non-scored fields, we assign a neutral/pass-through confidence or specific logic
+                    // For now, just log their presence if they are not part of the core scored fields.
+                    // console.log(`[ConfidenceFusionEngine] Field '${field}' present in concepts but not in DOMAIN_SCHEMA.fields for scoring.`);
+                    // If they need to be in fieldConfidences, they need a score and signals.
+                    // For simplicity, Phase 13B focuses on schema fields for structured scoring.
+                }
+            }
+        }
+
+        const overallConfidenceUnrounded = fieldConfidences.length > 0 ? totalScoreSum / fieldConfidences.length : 0;
+        // Round the final overallConfidence as well
+        const overallConfidenceRounded = parseFloat(overallConfidenceUnrounded.toFixed(3));
 
         return {
-            overallConfidence: parseFloat(overallConfidence.toFixed(2)),
-            fieldConfidences
+            overallConfidence: overallConfidenceRounded,
+            fieldConfidences,
+            fusionLog
         };
     }
 }
 
-// Example Usage (for testing - remove or comment out for production)
+// Example Usage (adjusted for Phase 13B)
 /*
-const exampleInput: FusionInput = {
-    concepts: {
+async function testConfidenceFusionEngine() {
+    console.log("--- Testing ConfidenceFusionEngine (Phase 13B) ---");
+
+    const exampleConcepts: ExtractedConcepts = {
         principles: ["Adaptation", "Robustness"],
         methods: ["RL"],
         frameworks: [], // Empty
-        theories: ["Game Theory"]
-    },
-    ambiguityScores: [
-        { field: "principles", term: "Adaptation", score: 0.1, suggestion: "Clarify context A" },
-        { field: "methods", term: "RL", score: 0.7, suggestion: "Specify which RL algorithm" }
-    ],
-    dependencyInsights: {
-        principles: [{ field: "methods", strength: 2 }],
+        theories: ["Game Theory"],
+        notes: "This is a test note."
+    };
+
+    const exampleAmbiguityScores: AmbiguityScore[] = [
+        { field: "principles", score: 0.1, reasoning: "Minor ambiguity" },
+        { field: "methods", score: 0.8, reasoning: "Highly ambiguous" }, // Increased ambiguity for methods
+        { field: "frameworks", score: 1.0, reasoning: "Field empty" } // Ambiguity for empty field
+    ];
+
+    const exampleDependencyInsights: Partial<Record<DomainField, DependencyInsight[]>> = {
+        principles: [{ field: "methods", strength: 2 }, { field: "theories", strength: 1 }],
         methods: [{ field: "principles", strength: 2 }, { field: "theories", strength: 1 }],
         theories: [{ field: "methods", strength: 1 }]
-    }
-};
+    };
 
-const result = ConfidenceFusionEngine.fuseSignals(exampleInput);
-console.log("--- Confidence Fusion Result ---");
-console.dir(result, { depth: null });
+    const exampleReinforcementSignals: ReinforcementFeedback[] = [
+        { field: "methods", recovered: true }, // Methods was recovered
+        { field: "frameworks", recovered: false } // Frameworks recovery was attempted but failed (or not applicable)
+    ];
 
-const exampleInputNoAmbiguity: FusionInput = {
-    concepts: {
-        principles: ["Modularity"],
-        methods: ["ABM"],
-        frameworks: [], 
-        theories: []
-    },
-    ambiguityScores: [],
-    dependencyInsights: {
-        principles: [{ field: "methods", strength: 1 }],
-        methods: [{ field: "principles", strength: 1 }]
-    }
-};
-const result2 = ConfidenceFusionEngine.fuseSignals(exampleInputNoAmbiguity);
-console.log("--- Confidence Fusion Result (No Ambiguity) ---");
-console.dir(result2, { depth: null });
+    const fusionInput1: FuseSignalsInput = {
+        concepts: exampleConcepts,
+        ambiguityScores: exampleAmbiguityScores,
+        dependencyInsights: exampleDependencyInsights,
+        reinforcementSignals: exampleReinforcementSignals
+    };
+
+    const result1 = ConfidenceFusionEngine.fuseSignals(fusionInput1);
+    console.log("\n--- Confidence Fusion Result 1 (With Reinforcement & Dependencies) ---");
+    console.dir(result1, { depth: null });
+
+    const fusionInput2: FuseSignalsInput = {
+        concepts: {
+            principles: ["Clarity"],
+            methods: ["Formal Verification"],
+            frameworks: ["Coq"],
+            theories: ["Type Theory"],
+            notes: "All clear."
+        },
+        ambiguityScores: [
+            {field: "principles", score: 0, reasoning: "clear"},
+            {field: "methods", score: 0, reasoning: "clear"},
+            {field: "frameworks", score: 0, reasoning: "clear"},
+            {field: "theories", score: 0, reasoning: "clear"},
+        ],
+        dependencyInsights: {
+            principles: [{field: "methods", strength: 3}],
+            methods: [{field: "frameworks", strength: 2}]
+        },
+        reinforcementSignals: [] // No reinforcement actions taken
+    };
+    const result2 = ConfidenceFusionEngine.fuseSignals(fusionInput2);
+    console.log("\n--- Confidence Fusion Result 2 (All Clear, No Reinforcement) ---");
+    console.dir(result2, { depth: null });
+
+}
+// testConfidenceFusionEngine();
 */ 

@@ -1,171 +1,151 @@
-import { SemanticChunker, type Chunk } from '../extraction/SemanticChunker';
+import type { ExtractedConcepts, QAValidationResult, CognitiveKernelResult, ExtractionResult as GlobalExtractionResult } from '@/types';
+import { SemanticChunker } from '../extraction/SemanticChunker';
+import { ExtractorAgent } from './ExtractorAgent';
 import { PatternNormalizer } from '../extraction/PatternNormalizer';
-import { AmbiguityDetectorAgent, type AmbiguityScore } from './AmbiguityDetectorAgent';
+import { AmbiguityDetectorAgent } from './AmbiguityDetectorAgent';
 import { DependencyModel, type DependencyInsight } from './DependencyModel';
-import { ConfidenceFusionEngine, type UnifiedConfidenceResult } from './ConfidenceFusionEngine';
-import { ReinforcementAgentV2, type ReinforcementInputV2, type ReinforcementOutputV2 } from './ReinforcementAgentV2';
-import { SelfCorrectionLoop, type SelfCorrectionInput, type SelfCorrectionOutput } from './SelfCorrectionLoop';
-import { DOMAIN_SCHEMA, type DomainField } from './DomainSchema';
+import { ConfidenceFusionEngine } from './ConfidenceFusionEngine';
+import { ReinforcementAgent } from './ReinforcementAgent';
 import { ExtractionQAAgent } from '../../../lib/extraction/ExtractionQAAgent';
-import type { ExtractedConcepts, QAValidationResult, ExtractionResult } from '../../../types';
-import { ExtractorAgent } from "./ExtractorAgent";
 
+// 🧠 Phase 14/15: Cognitive Kernel Imports
+import { OrchestrationController } from './OrchestrationController';
+import type { PersonaType } from './RelevanceFilteringAgent';
+
+// Define output shape for the original extraction part (this was local before, now explicitly named for clarity)
 export class ExtractionOrchestrator {
-    private static dependencyModel = new DependencyModel();
-    private static reinforcementConfig: ReinforcementInputV2['config'] = {
-        minConfidenceForAction: 0.6,
-    };
-    private static selfCorrectionLoopConfig = {
-        maxPasses: 2,
-    };
+    static async runExtraction(documentText: string, persona: PersonaType): Promise<CognitiveKernelResult> {
+        const processingLog: string[] = [];
+        processingLog.push('Starting Extraction Pipeline...');
 
-    public static async runExtraction(documentText: string): Promise<ExtractionResult> {
-        const processingLog: string[] = ["Starting extraction..."];
+        // Step 1: Chunk
+        const chunks = SemanticChunker.chunkDocument(documentText);
+        processingLog.push(`Document chunked into ${chunks.length} segments.`);
 
-        processingLog.push("Chunking document...");
-        const chunks: Chunk[] = SemanticChunker.chunkDocument(documentText);
-        processingLog.push(`Document chunked into ${chunks.length} chunks.`);
+        // Step 2: Extract
+        const chunkTexts = chunks.map(chunk => chunk.text);
+        const extractedConcepts = await ExtractorAgent.extract(chunkTexts);
+        processingLog.push('Initial extraction complete.');
 
-        const chunksContent: string[] = chunks.map(chunk => chunk.text);
+        // Step 3: Normalize
+        const normalizedConcepts = PatternNormalizer.normalize(extractedConcepts);
+        processingLog.push('Pattern normalization applied.');
 
-        processingLog.push("Performing initial extraction (Live ExtractorAgent)...");
-        const initialExtraction: ExtractedConcepts = await ExtractorAgent.extract(chunksContent);
-        processingLog.push("Initial extraction complete.");
+        // Step 4: Ambiguity Detection
+        const ambiguityScores = AmbiguityDetectorAgent.detectAmbiguities(normalizedConcepts);
+        processingLog.push(`Ambiguity detection complete (${ambiguityScores.length} fields scored).`);
 
-        processingLog.push("Normalizing extracted data...");
-        const dataToNormalize: Record<string, unknown> = { ...initialExtraction };
-        const normalizedConcepts = PatternNormalizer.normalize(dataToNormalize) as ExtractedConcepts;
-        processingLog.push("Data normalization complete.");
+        // Step 5: Dependency Analysis
+        const dependencyModel = new DependencyModel();
+        dependencyModel.analyzeDependencies(normalizedConcepts);
 
-        const defaultEmptyConcepts: ExtractedConcepts = { principles: [], methods: [], frameworks: [], theories: [] };
-        let currentConcepts: ExtractedConcepts = {
-            ...defaultEmptyConcepts,
-            ...normalizedConcepts,
-            principles: normalizedConcepts.principles || [],
-            methods: normalizedConcepts.methods || [],
-            frameworks: normalizedConcepts.frameworks || [],
-            theories: normalizedConcepts.theories || [],
-            notes: normalizedConcepts.notes
-        };
+        // Correctly build the dependencyInsights map for ConfidenceFusionEngine
+        const dependencyInsightsForFusion: Partial<Record<keyof ExtractedConcepts, DependencyInsight[]>> = {};
+        const fieldsToAnalyze: (keyof ExtractedConcepts)[] = ['principles', 'methods', 'frameworks', 'theories']; // Add other relevant fields if necessary
 
-        processingLog.push("Detecting ambiguities (pre-reinforcement)...");
-        const initialAmbiguityScores: AmbiguityScore[] = AmbiguityDetectorAgent.detectAmbiguities(currentConcepts);
-        processingLog.push(`Initial ambiguity detection complete. Found ${initialAmbiguityScores.length} potential ambiguities.`);
-
-        processingLog.push("Analyzing concept dependencies...");
-        this.dependencyModel.analyzeDependencies(currentConcepts);
-        const dependencyInsightsGathered: Partial<Record<DomainField, DependencyInsight[]>> = {};
-        for (const field of DOMAIN_SCHEMA.fields) {
-            const fieldKey = field as DomainField;
-            dependencyInsightsGathered[fieldKey] = this.dependencyModel.getPotentialDependencies(fieldKey);
+        for (const sourceField of fieldsToAnalyze) {
+            // Ensure the field exists and has content in normalizedConcepts before seeking dependencies
+            if (normalizedConcepts[sourceField] &&
+                ((Array.isArray(normalizedConcepts[sourceField]) && (normalizedConcepts[sourceField] as string[]).length > 0) ||
+                    typeof normalizedConcepts[sourceField] === 'string' && (normalizedConcepts[sourceField] as string).length > 0)
+            ) {
+                const insightsArray = dependencyModel.getPotentialDependencies(sourceField as import('./DomainSchema').DomainField);
+                if (insightsArray.length > 0) {
+                    dependencyInsightsForFusion[sourceField] = insightsArray;
+                }
+            }
         }
-        processingLog.push("Concept dependency analysis and insight gathering complete.");
+        // Note: The previous variable 'dependencyInsights' (which was an array) is no longer created.
+        // 'dependencyInsightsArray' is now scoped within the loop.
 
-        processingLog.push("Fusing confidence signals (pre-reinforcement)...");
-        const initialConfidenceResult: UnifiedConfidenceResult = ConfidenceFusionEngine.fuseSignals({
-            concepts: currentConcepts,
-            ambiguityScores: initialAmbiguityScores,
-            dependencyInsights: dependencyInsightsGathered
+        // Step 6: Confidence Fusion
+        const confidenceResult = ConfidenceFusionEngine.fuseSignals({
+            concepts: normalizedConcepts,
+            ambiguityScores,
+            dependencyInsights: dependencyInsightsForFusion, // Use the correctly structured map
         });
-        processingLog.push(`Initial confidence fusion complete. Overall confidence: ${initialConfidenceResult.overallConfidence}`);
-        console.log("[ExtractionOrchestrator] Initial confidence fusion result:", initialConfidenceResult);
 
-        processingLog.push("Invoking ReinforcementAgentV2 (Pass 1)...");
-        const reinforcementInput: ReinforcementInputV2 = {
-            originalConcepts: currentConcepts,
-            ambiguityScores: initialAmbiguityScores,
-            dependencyInsights: dependencyInsightsGathered,
-            fieldConfidences: initialConfidenceResult.fieldConfidences,
+        processingLog.push('Confidence fusion complete.');
+
+        // Step 7: Reinforcement Pass
+        const reinforcementOutput = await ReinforcementAgent.refineConcepts({
+            originalConcepts: normalizedConcepts,
             fullDocumentText: documentText,
-            config: this.reinforcementConfig
-        };
-        const reinforcementOutput: ReinforcementOutputV2 = await ReinforcementAgentV2.refineConcepts(reinforcementInput);
-        currentConcepts = reinforcementOutput.refinedConcepts;
-        processingLog.push(`ReinforcementAgentV2 (Pass 1) finished. Summary: ${reinforcementOutput.refinementSummary.split('\n')[0]}`);
-        console.log("[ExtractionOrchestrator] ReinforcementAgentV2 (Pass 1) output:", reinforcementOutput);
+            ambiguityScores,
+        });
 
-        const adaptedRecoveryAttempts = reinforcementOutput.recoveryAttempts.map(attempt => ({
-            ...attempt,
-            originalValue: Array.isArray(attempt.originalValue) ? attempt.originalValue : (typeof attempt.originalValue === 'string' ? [attempt.originalValue] : []),
-            newValue: Array.isArray(attempt.newValue) ? attempt.newValue : (typeof attempt.newValue === 'string' ? [attempt.newValue] : []),
-            details: attempt.details ?? "",
-        }));
+        processingLog.push('Reinforcement agent pass complete.');
 
-        const firstPassReinforcementDetails = {
-            summary: reinforcementOutput.refinementSummary,
-            attempts: adaptedRecoveryAttempts,
-            needsFurtherReview: reinforcementOutput.needsFurtherReview
-        };
-        let selfCorrectionDetails: SelfCorrectionOutput | undefined = undefined;
+        // Step 8: Self-Correction Loop (placeholder as per the patch)
+        const selfCorrectionDetailsForGlobalResult: GlobalExtractionResult['selfCorrectionDetails'] = undefined;
 
-        if (reinforcementOutput.needsFurtherReview) {
-            processingLog.push("Initial reinforcement pass suggests further review. Invoking SelfCorrectionLoop...");
-            const selfCorrectionInput: SelfCorrectionInput = {
-                initialConcepts: currentConcepts,
-                ambiguityScores: initialAmbiguityScores,
-                dependencyModel: this.dependencyModel,
-                fieldConfidences: initialConfidenceResult.fieldConfidences,
-                fullDocumentText: documentText,
-                reinforcementConfig: this.reinforcementConfig,
-                maxPasses: this.selfCorrectionLoopConfig.maxPasses
-            };
-            selfCorrectionDetails = await SelfCorrectionLoop.run(selfCorrectionInput);
-            currentConcepts = selfCorrectionDetails.finalConcepts;
-            processingLog.push(...selfCorrectionDetails.correctionLog.map(l => `  [SCL] ${l}`));
-            processingLog.push(`SelfCorrectionLoop finished. Overall needs further review: ${selfCorrectionDetails.overallNeedsFurtherReview}`);
-            console.log("[ExtractionOrchestrator] SelfCorrectionLoop output:", selfCorrectionDetails);
-        } else {
-            processingLog.push("Initial reinforcement pass did not flag for further review. Skipping SelfCorrectionLoop.");
-        }
+        // Step 9: QA Validation
+        const qaValidation = await ExtractionQAAgent.validate(documentText, reinforcementOutput.refinedConcepts);
+        processingLog.push('QA validation complete.');
 
-        processingLog.push("Performing final QA validation...");
-        const qaValidationResult: QAValidationResult = await ExtractionQAAgent.validate(documentText, currentConcepts);
-        currentConcepts = qaValidationResult.validatedConcepts;
-        processingLog.push(`QA Validation complete. Is Valid: ${qaValidationResult.isValid}. Issues: ${qaValidationResult.issues.length}. QA Confidence: ${qaValidationResult.confidenceScore}`);
-        console.log("[ExtractionOrchestrator] QA Validation result:", qaValidationResult);
-
-        processingLog.push("Note: Reported top-level confidence scores (overallConfidence, fieldConfidences) are pre-any-reinforcement.");
-        processingLog.push("Extraction Orchestrator run finished.");
-
-        const finalOutputConcepts: ExtractedConcepts = {
-            ...currentConcepts,
-            notes: currentConcepts.notes ?? ""
+        // MODIFIED: Assemble the extractionResult object, explicitly typing it as GlobalExtractionResult
+        const extractionResult: GlobalExtractionResult = {
+            finalConcepts: reinforcementOutput.refinedConcepts,
+            ambiguityScores: ambiguityScores.map(as => ({ ...as, field: as.field as keyof ExtractedConcepts })),
+            overallConfidence: confidenceResult.overallConfidence,
+            fieldConfidences: confidenceResult.fieldConfidences.map(fc => ({ ...fc, field: fc.field as keyof ExtractedConcepts | string })),
+            processingLog,
+            reinforcementDetails: reinforcementOutput.refinementSummary
+                ? {
+                    summary: reinforcementOutput.refinementSummary,
+                    attempts: [], // Placeholder, as ReinforcementAgent current mock doesn't provide detailed attempts
+                    // Example logic for needsFurtherReview based on available info:
+                    needsFurtherReview: reinforcementOutput.confidenceScore !== undefined ? reinforcementOutput.confidenceScore < 0.7 : true,
+                }
+                : undefined,
+            selfCorrectionDetails: selfCorrectionDetailsForGlobalResult,
+            qaValidation,
         };
 
-        return {
-            finalConcepts: finalOutputConcepts,
-            ambiguityScores: initialAmbiguityScores,
-            overallConfidence: initialConfidenceResult.overallConfidence,
-            fieldConfidences: initialConfidenceResult.fieldConfidences,
-            processingLog: processingLog,
-            reinforcementDetails: firstPassReinforcementDetails,
-            selfCorrectionDetails: selfCorrectionDetails,
-            qaValidation: qaValidationResult
+        // NEW: Inject cognitive orchestration layer post-extraction
+        const cognitiveOutput = OrchestrationController.runCognitiveOrchestration(
+            extractionResult.finalConcepts,
+            persona
+        );
+
+        // TEMP: Log to verify cognitive kernel invocation during first runs -- REMOVE THIS LINE
+        // console.log('[Phase 15 Cognitive Kernel Output]', JSON.stringify(cognitiveOutput, null, 2)); 
+
+        processingLog.push('Phase 15 Cognitive Layer Orchestration invoked successfully.');
+
+        // Return new Phase 15 contract structure:
+        const cognitiveKernelResult: CognitiveKernelResult = {
+            extractionResult,
+            cognitiveOutput,
         };
+
+        return cognitiveKernelResult;
     }
 }
 
-// Example usage 
-/*
+// Example usage
+// MODIFIED: Uncommenting the testOrchestrator function -- REMOVE THIS ENTIRE FUNCTION AND ITS CALL
+/* REMOVE_START
 async function testOrchestrator() {
     console.log("Testing ExtractionOrchestrator...");
     const sampleDocumentText1 = "This document discusses agile methodologies and their core principles like adaptation and scalability. It also refers to the scrum framework.";
     const sampleDocumentText2 = "Exploring game theory. Methods are vague. Principles unclear. Adaptation is key in self-organization."; // designed to trigger reinforcement & loop
     const sampleDocumentText3 = "Placeholder placeholder principle. Test method. Example framework. Dummy theory."; // designed to trigger QA issues
+    const testPersona: PersonaType = 'researcher'; // Define a persona for testing
 
     try {
-        console.log("\n--- Test Run 1: Simple Document ---");
-        const result1 = await ExtractionOrchestrator.runExtraction(sampleDocumentText1);
+        console.log("\n--- Test Run 1: Simple Document (Persona: " + testPersona + ") ---");
+        const result1 = await ExtractionOrchestrator.runExtraction(sampleDocumentText1, testPersona);
         console.log("\n--- Orchestrator Test Result 1 (Final) ---");
         console.dir(result1, { depth: null });
 
-        console.log("\n\n--- Test Run 2: Document designed to need correction ---");
-        const result2 = await ExtractionOrchestrator.runExtraction(sampleDocumentText2);
+        console.log("\n\n--- Test Run 2: Document designed to need correction (Persona: " + testPersona + ") ---");
+        const result2 = await ExtractionOrchestrator.runExtraction(sampleDocumentText2, testPersona);
         console.log("\n--- Orchestrator Test Result 2 (Final) ---");
         console.dir(result2, { depth: null });
 
-        console.log("\n\n--- Test Run 3: Document designed to have QA issues ---");
-        const result3 = await ExtractionOrchestrator.runExtraction(sampleDocumentText3);
+        console.log("\n\n--- Test Run 3: Document designed to have QA issues (Persona: " + testPersona + ") ---");
+        const result3 = await ExtractionOrchestrator.runExtraction(sampleDocumentText3, testPersona);
         console.log("\n--- Orchestrator Test Result 3 (Final) ---");
         console.dir(result3, { depth: null });
 
@@ -173,5 +153,7 @@ async function testOrchestrator() {
         console.error("Error during ExtractionOrchestrator test:", error);
     }
 }
-// testOrchestrator();
-*/ 
+
+// MODIFIED: Adding a call to testOrchestrator to execute it
+testOrchestrator();
+REMOVE_END */ 

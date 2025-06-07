@@ -4,7 +4,7 @@ import { PromptCompiler } from './PromptCompiler';
 import { AmbiguityCatcher } from './AmbiguityCatcher';
 import { MultiPassRefinementAgent } from './MultiPassRefinementAgent';
 import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
-import { OpenAIAdapter } from '@/server/llm/OpenAIAdapter';
+import { LLMAdapterRouter } from '@/server/llm/LLMAdapterRouter';
 import { SchemaActivator } from './SchemaActivator';
 
 // Obsolete type definitions like LLMResponseFormat and DEFAULT_EMPTY_CONCEPTS are removed.
@@ -59,7 +59,7 @@ ONLY return valid JSON as your full output.
         `.trim();
 
         // Directly return the Promise<unknown> from OpenAIAdapter.call
-        return OpenAIAdapter.call({
+        return LLMAdapterRouter.call({
             systemPrompt: enforcedSystemPrompt,
             userPrompt
         });

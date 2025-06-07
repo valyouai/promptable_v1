@@ -6,7 +6,7 @@
  * not covered by schema mapping, such as punctuation, casing, etc.
  */
 
-// import type { ExtractedConcepts } from "@/types"; // Might be useful later for strict typing
+import type { ExtractedConcepts } from "@/types"; // Might be useful later for strict typing
 
 // Alias map: maps various key phrasings (lowercase, spaces for separators) to canonical keys.
 const ALIAS_MAP: Record<string, string> = {
@@ -137,9 +137,9 @@ export class PatternNormalizer {
      * @param rawData The raw data extracted, as a Record<string, unknown>.
      * @returns A new record with normalized keys and values.
      */
-    public static normalize(rawData: Record<string, unknown>): Record<string, unknown> {
+    public static normalize(rawData: ExtractedConcepts): ExtractedConcepts {
         // console.log('[PatternNormalizer] Input rawData:', JSON.parse(JSON.stringify(rawData)));
-        const result: Record<string, unknown> = {};
+        const result: Partial<ExtractedConcepts> = {}; // Changed to Partial<ExtractedConcepts> for incremental build
         const collectedArrays: Record<string, string[]> = {};
 
         for (const key of CANONICAL_ARRAY_KEYS) {
@@ -203,6 +203,6 @@ export class PatternNormalizer {
         // If rawData.confidence_score = 0.95, it goes into result via the 'else' block.
 
         // console.log('[PatternNormalizer] Output normalizedData:', JSON.parse(JSON.stringify(result)));
-        return result;
+        return result as ExtractedConcepts; // Cast to ExtractedConcepts as the logic ensures it
     }
 } 

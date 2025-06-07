@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { generateSystemPrompt, Persona, ContentType, GenerationConfig } from '@/lib/prompt-templates';
 import { ExtractedConcepts } from '@/types';
-import { transformInsights, TransformedConcepts } from '@/lib/contextual-transformer';
+import { transformInsights, type TransformedLLMConcepts } from '@/lib/contextual-transformer';
 
 export async function POST(request: Request) {
     try {
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Missing required generation parameters or extracted concepts.' }, { status: 400 });
         }
 
-        const transformedConcepts: TransformedConcepts = await transformInsights(extractedConcepts, persona, contentType);
+        const transformedConcepts: TransformedLLMConcepts = await transformInsights(persona, contentType, extractedConcepts);
 
         const config: GenerationConfig = {
             // persona: persona, // Removed from config

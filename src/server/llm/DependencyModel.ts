@@ -106,6 +106,14 @@ export class DependencyModel {
         fieldADeps[fieldB]! += incrementBy;
     }
 
+    /**
+     * Returns the current state of the dependency graph.
+     * @returns The dependency graph.
+     */
+    public getGraph(): DependencyGraph {
+        return this.graph;
+    }
+
     // Placeholder for a method to build an initial model based on a corpus or extensive research data
     // public static async buildInitialCorpusModel(corpus: Document[]): Promise<DependencyGraph> { 
     //     // To be implemented: analyze a large set of documents to establish a baseline dependency graph

@@ -10,18 +10,21 @@
     "lint": "next lint",
     "test": "tsx --env-file .env.test test/persona-validation.ts",
     "test:kernel-integration": "tsx --env-file .env.test test/kernel.integration.test.ts",
+    "test:kernel": "npx tsx tests/server/llm/Phase15CUnifiedKernelHarness.test.ts",
     "test:parser": "tsx --env-file .env.test test/lib/extraction/parser-engine.test.ts",
     "test:api:upload": "tsx --env-file .env.test test/api/upload-document.test.ts",
     "test:api:extract": "tsx --env-file .env.test test/api/extract-concepts.test.ts",
     "test:api:generate": "tsx --env-file .env.test test/api/generate-system-prompt.test.ts",
     "test:api": "npm run test:api:upload && npm run test:api:extract && npm run test:api:generate",
     "test:all": "npm run test && npm run test:kernel-integration && npm run test:parser && npm run test:api",
+    "phase13e:test": "tsx src/server/tests/phase13e/TestHarnessRunner.ts",
     "validate": "npm run build && echo '✅ Build successful!'",
     "clean": "rm -rf .next node_modules package-lock.json && npm install && npm run build"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.70",
     "@types/pdf-parse": "^1.1.5",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.9.0",
     "form-data": "^4.0.3",
     "jsonrepair": "^3.12.0",
@@ -34,6 +37,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tiktoken-node": "^0.0.7",
+    "uuid": "^11.1.0",
     "wink-eng-lite-web-model": "^1.8.1",
     "wink-nlp": "^2.3.2"
   },
@@ -57,6 +61,7 @@
     "sinon": "^20.0.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.3.4",
+    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

@@ -62,22 +62,36 @@ export class AmbiguityDetectorAgent {
             return { isAmbiguous: true, score: 1.0, reasoning: "Field empty" };
         }
 
-        if (fieldValue.length === 1) {
-            const singleValue = fieldValue[0].toLowerCase();
-            const hasHedging = AMBIGUITY_MARKERS.some(marker => singleValue.includes(marker));
+        // New logic: iterate through each item in the array
+        let hedgingFoundInAnyItem = false;
+        let allItemsClearSummary = "All items appear clear. Items: ";
+
+        for (const item of fieldValue) {
+            const lowerItem = item.toLowerCase();
+            const hasHedging = AMBIGUITY_MARKERS.some(marker => lowerItem.includes(marker));
             if (hasHedging) {
-                return { isAmbiguous: true, score: 0.75, reasoning: "Hedging phrase detected in singleton value" };
+                hedgingFoundInAnyItem = true;
+                // Provide more specific reasoning if needed, e.g., which item and marker
+                // For now, a general reasoning for the field is fine.
+                break; // Found hedging, no need to check further for this field
             }
-            // Single, non-empty, non-hedged value is considered clear for an array field element
-            // If it should be ambiguous just for being a singleton without hedging, the rules would need to specify that.
-            // For now, a single clear item is just score 0 with specific reasoning.
-            return { isAmbiguous: false, score: 0.0, reasoning: "Single clear value present" };
+            allItemsClearSummary += `'${item.substring(0, 20)}...' `;
         }
 
-        // For multiple values, we assume they are clear unless a more complex rule for partial hedging is added.
-        // The current rules are: Empty (1.0), Hedging (0.75 for singleton), Multiple clean (0.0)
-        // This implies multiple values are treated as 0.0 if not empty.
-        return { isAmbiguous: false, score: 0.0, reasoning: "Multiple clear values present" };
+        if (hedgingFoundInAnyItem) {
+            return {
+                isAmbiguous: true,
+                score: 0.6, // Adjusted score for hedging in one of potentially multiple items
+                reasoning: "Hedging phrase detected in at least one value within the field array."
+            };
+        }
+
+        // If loop completes and no hedging found in any item
+        return {
+            isAmbiguous: false,
+            score: 0.0,
+            reasoning: fieldValue.length === 1 ? "Single clear value present" : `Multiple clear values present. ${allItemsClearSummary.trim()}`
+        };
     }
 
     /**

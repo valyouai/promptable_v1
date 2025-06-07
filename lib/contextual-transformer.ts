@@ -3,7 +3,7 @@ import type { ExtractedConcepts } from '@/types';
 import type { Persona, ContentType } from './prompt-templates';
 
 // Define the expected output structure from the LLM for transformed concepts
-interface TransformedLLMConcepts {
+export interface TransformedLLMConcepts {
     principles: string[];
     methods: string[];
     frameworks: string[];
