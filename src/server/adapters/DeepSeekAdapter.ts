@@ -3,7 +3,6 @@
 // assuming ExtractorAgent and other parts of the system are typed with these.
 // If these types are not globally available or if you want to decouple completely,
 // you might need to define local, structurally-compatible types.
-import type OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();

@@ -1,4 +1,4 @@
-import type { ExtractedConcepts } from '../../../types';
+import type { ExtractedConcepts } from '@/types';
 // DOMAIN_SCHEMA import removed as it's not used in the new extract method.
 import { DeepSeekAdapter } from '../adapters/DeepSeekAdapter'; // Changed from OpenAIAdapter
 import { jsonrepair } from 'jsonrepair';

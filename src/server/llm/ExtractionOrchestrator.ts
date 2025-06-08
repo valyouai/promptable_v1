@@ -1,12 +1,12 @@
 import type { ExtractedConcepts, /* QAValidationResult, */ CognitiveKernelResult, ExtractionResult as GlobalExtractionResult } from '@/types';
-import { SemanticChunker, type Chunk as SemanticChunk } from '../../../lib/chunking/SemanticChunker';
+import { SemanticChunker, type Chunk as SemanticChunk } from '@/lib/chunking/SemanticChunker';
 import { ExtractorAgent } from './ExtractorAgent';
 import { PatternNormalizer } from '../extraction/PatternNormalizer';
 import { AmbiguityDetectorAgent } from './AmbiguityDetectorAgent';
 import { DependencyModel, type DependencyInsight } from './DependencyModel';
 import { ConfidenceFusionEngine } from './ConfidenceFusionEngine';
 import { ReinforcementAgent } from './ReinforcementAgent';
-import { ExtractionQAAgent } from '../../../lib/extraction/ExtractionQAAgent';
+import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
 
 // 🧠 Phase 14/15: Cognitive Kernel Imports
 import { OrchestrationController } from './OrchestrationController';

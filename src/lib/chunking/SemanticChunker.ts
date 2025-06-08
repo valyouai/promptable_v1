@@ -9,6 +9,20 @@ const nlp = winkNLP(model);
 // const its = nlp.its; // Not used in this version of the chunker logic
 // const as = nlp.as; // Not used in this version of the chunker logic
 
+// Helper function to safely decode tokens
+function safeDecodeTokens(tokens: number[], modelName?: string): string {
+    try {
+        // Attempt to decode the tokens using the original decodeTokens function
+        return decodeTokens(tokens, modelName);
+    } catch (err) {
+        // Log an error message if decoding fails
+        console.error(`[SemanticChunker] Failed to decode token chunk: ${err}`);
+        // Return a Unicode replacement character as a fallback
+        // This ensures that the chunking process can continue even if one chunk is problematic
+        return '';
+    }
+}
+
 export type Chunk = {
     text: string;
     tokenCount: number;
@@ -61,7 +75,7 @@ export class SemanticChunker {
         while (currentIndex < totalTokenCount) {
             const endIndex = Math.min(currentIndex + chunkSize, totalTokenCount);
             const chunkTokens = allTokens.slice(currentIndex, endIndex);
-            const chunkText = decodeTokens(chunkTokens, modelName);
+            const chunkText = safeDecodeTokens(chunkTokens, modelName);
 
             chunks.push({
                 text: chunkText,
@@ -205,7 +219,7 @@ export class SemanticChunker {
                 if (singleParaTokens > this.MAX_TOKENS_PER_CHUNK) {
                     const encoded = encodeText(para, modelName);
                     const sliced = encoded.slice(0, this.MAX_TOKENS_PER_CHUNK);
-                    const decoded = decodeTokens(sliced, modelName);
+                    const decoded = safeDecodeTokens(sliced, modelName);
                     console.warn(`[SemanticChunker] A merged block with ${singleParaTokens} tokens exceeds max chunk size of ${this.MAX_TOKENS_PER_CHUNK}. Truncating.`);
                     chunks.push({
                         text: decoded,

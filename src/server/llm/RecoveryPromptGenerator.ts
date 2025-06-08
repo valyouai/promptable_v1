@@ -1,5 +1,5 @@
 import type { DomainField } from './DomainSchema';
-import type { ExtractedConcepts } from '../../../types';
+import type { ExtractedConcepts } from '@/types';
 
 // More specific type for context to be passed for generation
 export interface RecoveryPromptContext {

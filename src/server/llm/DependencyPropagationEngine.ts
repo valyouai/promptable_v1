@@ -1,4 +1,4 @@
-import type { ExtractedConcepts } from '../../../types';
+import type { ExtractedConcepts } from '@/types';
 import type { DomainField } from './DomainSchema';
 import type { DependencyGraph } from './DependencyModel'; // Assuming DependencyModel provides this
 

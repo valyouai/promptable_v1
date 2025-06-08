@@ -1,4 +1,4 @@
-import type { CognitiveOrchestrationOutput } from '../src/server/llm/OrchestrationController';
+import type { CognitiveOrchestrationOutput } from '@/server/llm/OrchestrationController';
 
 export type ExtractedConcepts = {
     principles: string[];
@@ -134,5 +134,5 @@ export const ALLOWED_PERSONAS: PersonaType[] = ['creator', 'researcher', 'educat
 
 // Placeholder for GenerationConfig type, to be refined with SystemPromptGenerator component details
 export interface GenerationConfig {
-    [key: string]: any; // Allow arbitrary keys for now
+    [key: string]: unknown; // Allow arbitrary keys for now
 }

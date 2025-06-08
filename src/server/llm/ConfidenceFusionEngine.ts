@@ -1,6 +1,6 @@
 import type { AmbiguityScore } from './AmbiguityDetectorAgent';
 import type { DependencyInsight } from './DependencyModel';
-import type { ExtractedConcepts } from '../../../types';
+import type { ExtractedConcepts } from '@/types';
 import { DOMAIN_SCHEMA, type DomainField } from './DomainSchema';
 
 // Added type definitions as per Phase 13B Plan

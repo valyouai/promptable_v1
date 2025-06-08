@@ -1,5 +1,5 @@
 import { DOMAIN_SCHEMA, type DomainField } from './DomainSchema';
-import type { ExtractedConcepts } from '../../../types';
+import type { ExtractedConcepts } from '@/types';
 
 // Represents the strength of co-occurrence between fields.
 // e.g., { principles: { methods: 2, frameworks: 1 } } means principles co-occurred with methods twice.

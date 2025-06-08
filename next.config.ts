@@ -7,10 +7,8 @@ const nextConfig: NextConfig = {
 
   experimental: {
     esmExternals: true,
+    swcPlugins: [],
   },
-
-  swcMinify: true,
-  swcPlugins: [],
 
   webpack: (config, { isServer, dev }) => {
     // Add alias for @/
