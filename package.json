@@ -18,11 +18,12 @@
     "version": "KERNEL_V1.0_LOCKED"
   },
   "scripts": {
-    "dev": "next dev",
+    "preflight": "node preflight-check.js",
+    "dev": "npm run preflight && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx --env-file .env.test test/persona-validation.ts",
+    "test": "npm run preflight && tsx --env-file .env.test test/persona-validation.ts",
     "test:kernel-integration": "tsx --env-file .env.test test/kernel.integration.test.ts",
     "test:kernel": "npx tsx tests/server/llm/Phase15CUnifiedKernelHarness.test.ts",
     "ci:verify-kernel": "npm run test:kernel",

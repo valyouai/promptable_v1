@@ -1,28 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ExtractionOrchestrator } from '@/server/llm/ExtractionOrchestrator';
-// Removed import for parseMultipartFormData from '@/server/utils/parseMultipart' as it's now locally defined.
 import type { PersonaType } from '@/server/llm/RelevanceFilteringAgent';
-import { safeDecodeBuffer } from '@/lib/utils/SafeDocumentDecoder'; // Kept for fallback
+import { safeDecodeBuffer } from '@/lib/utils/SafeDocumentDecoder';
 
 // Default PDF extraction microservice URL (can be overridden by environment variable)
-const PDF_EXTRACTION_MICROSERVICE_URL = process.env.PDF_EXTRACTION_MICROSERVICE_URL || 'http://localhost:7000/api/extract-pdf-text'; // Corrected endpoint
+const PDF_EXTRACTION_MICROSERVICE_URL = process.env.PDF_EXTRACTION_MICROSERVICE_URL || 'http://localhost:7000/api/extract-pdf-text';
 
 async function parseMultipartFormData(fileName: string, fileBuffer: Buffer, fileType: string): Promise<string> {
     console.log(`[parseMultipartFormData] Received file: ${fileName}, type: ${fileType}`);
     const lowerFileName = fileName.toLowerCase();
 
     if (fileType === 'application/pdf' || lowerFileName.endsWith('.pdf')) {
-        console.log(`[parseMultipartFormData] Routing PDF ${fileName} to microservice: ${PDF_EXTRACTION_MICROSERVICE_URL} using global FormData.`);
+        console.log(`[parseMultipartFormData] Routing PDF ${fileName} to microservice: ${PDF_EXTRACTION_MICROSERVICE_URL}.`);
         try {
-            // Use global File and FormData
             const fileObject = new File([fileBuffer], fileName, { type: 'application/pdf' });
-            const nativeFormData = new FormData(); // This is now global FormData
+            const nativeFormData = new FormData();
             nativeFormData.append('file', fileObject);
 
             const response = await fetch(PDF_EXTRACTION_MICROSERVICE_URL, {
                 method: 'POST',
-                body: nativeFormData, // Pass the global FormData instance
-                // Headers will be set automatically by fetch for FormData
+                body: nativeFormData,
             });
 
             if (!response.ok) {
@@ -31,21 +28,20 @@ async function parseMultipartFormData(fileName: string, fileBuffer: Buffer, file
                 throw new Error(`PDF Microservice failed for ${fileName} with status ${response.status}: ${errorText}`);
             }
             const extractedText = await response.text();
-            console.log(`[parseMultipartFormData] Successfully extracted text from PDF ${fileName} via microservice.`);
+            console.log(`[parseMultipartFormData] Successfully extracted text from PDF ${fileName}.`);
             return extractedText;
         } catch (error) {
             console.error(`[parseMultipartFormData] Error calling PDF microservice for ${fileName}:`, error);
             if (error instanceof Error) {
-                throw new Error(`Failed to process PDF ${fileName} via microservice: ${error.message}`);
+                throw new Error(`Failed to process PDF ${fileName}: ${error.message}`);
             }
-            throw new Error(`An unknown error occurred while processing PDF ${fileName} via microservice.`);
+            throw new Error(`An unknown error occurred while processing PDF ${fileName}.`);
         }
     } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || lowerFileName.endsWith('.docx')) {
-        console.warn(`[parseMultipartFormData] DOCX processing for ${fileName} is not fully implemented. Using text fallback.`);
-        // Placeholder for future Mammoth or other DOCX library integration
+        console.warn(`[parseMultipartFormData] DOCX processing for ${fileName} is not fully implemented. Using fallback decoder.`);
         return safeDecodeBuffer(fileBuffer);
     } else {
-        console.log(`[parseMultipartFormData] Processing ${fileName} (type: ${fileType}) as plain text using safeDecodeBuffer.`);
+        console.log(`[parseMultipartFormData] Processing ${fileName} as plain text.`);
         return safeDecodeBuffer(fileBuffer);
     }
 }
@@ -53,40 +49,51 @@ async function parseMultipartFormData(fileName: string, fileBuffer: Buffer, file
 const ALLOWED_PERSONAS: PersonaType[] = ['educator', 'researcher', 'creator'];
 
 export async function POST(req: NextRequest) {
+    console.log('[runExtraction API] Received POST request.');
     try {
         const formData = await req.formData();
+
+        // 🔧 17D HARNESS PATCH INJECTION — BEGIN
+        if (process.env.TEST_MODE === 'true' && req.nextUrl.searchParams.get("forceError") === "true") {
+            console.warn("[17D Test Harness] Simulated extraction failure triggered.");
+            return NextResponse.json({ error: "Simulated extraction failure for 17D test." }, { status: 500 });
+        }
+        // 🔧 17D HARNESS PATCH INJECTION — END
+
         const file = formData.get('file') as File;
         const personaValue = formData.get('persona') as string | null;
+        const normalizedPersona = personaValue?.trim().toLowerCase();
+
+        console.log('[runExtraction API] Parsed FormData:', { fileName: file?.name, personaValue });
 
         if (!file) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
         }
 
-        if (!personaValue) {
+        if (!normalizedPersona) {
             return NextResponse.json({ error: 'No persona provided' }, { status: 400 });
         }
 
-        if (!ALLOWED_PERSONAS.includes(personaValue as PersonaType)) {
+        if (!ALLOWED_PERSONAS.includes(normalizedPersona as PersonaType)) {
             return NextResponse.json(
-                { error: `Invalid persona. Allowed personas are: ${ALLOWED_PERSONAS.join(', ')}` },
+                { error: `Invalid persona "${normalizedPersona}". Allowed personas: ${ALLOWED_PERSONAS.join(', ')}` },
                 { status: 400 }
             );
         }
-        const validatedPersona = personaValue as PersonaType;
+
+        const validatedPersona = normalizedPersona as PersonaType;
 
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        console.log(`[runExtraction API] Processing file ${file.name} (type: ${file.type}) by calling local parseMultipartFormData.`);
-        // Using the locally defined parseMultipartFormData function
+        console.log(`[runExtraction API] Invoking parser for file: ${file.name}`);
         const documentText = await parseMultipartFormData(file.name, buffer, file.type);
 
         const cognitiveKernelResult = await ExtractionOrchestrator.runExtraction(documentText, validatedPersona);
-
         return NextResponse.json(cognitiveKernelResult);
     } catch (err: unknown) {
-        console.error('[runExtraction API] Error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+        console.error('[runExtraction API] Server error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown internal server error';
         return NextResponse.json({ error: 'Internal ServerError', details: errorMessage }, { status: 500 });
     }
 } 

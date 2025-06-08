@@ -1,7 +1,7 @@
 // src/server/extraction/MultiPassRefinementAgent.ts
 
 import { ExtractedConcepts } from '@/types';
-import { OpenAIAdapter } from '@/server/llm/OpenAIAdapter';
+import { LLMAdapterRouter } from '@/server/llm/LLMAdapterRouter';
 
 type ReinforceableField =
     | 'Research Objective'
@@ -50,9 +50,9 @@ export class MultiPassRefinementAgent {
     }
 
     private static async requestFieldRepair(field: ReinforceableField, documentText: string): Promise<string> {
-        const systemPrompt = `You are an academic extraction assistant. The following research paper text may be missing or incomplete for the field "${field}". Please extract or improve the best possible value for "${field}". If no data can be extracted, return: "Not explicitly mentioned."`;
+        const systemPrompt = `You are an academic extraction assistant. The following research paper text may be missing or incomplete for the field \"${field}\". Please extract or improve the best possible value for \"${field}\". If no data can be extracted, return: \"Not explicitly mentioned.\"`;
 
-        const llmResponse = await OpenAIAdapter.call({
+        const llmResponse = await LLMAdapterRouter.call({
             systemPrompt,
             userPrompt: documentText
         });

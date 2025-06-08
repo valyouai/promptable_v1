@@ -1,26 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background-light: #ffffff;
+  --foreground-light: #171717; /* Default dark text for light mode */
+  --background-dark: #0a0a0a;
+  --foreground-dark: #ededed;
+
+  /* Default to light theme variables */
+  --background: var(--background-light);
+  --foreground: var(--foreground-light);
+}
+
+html.dark {
+  --background: var(--background-dark);
+  --foreground: var(--foreground-dark);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-geist-sans); /* Assuming these are defined elsewhere or by Tailwind */
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* The @media (prefers-color-scheme: dark) for :root variables is removed 
+   to make the .dark class the explicit trigger for dark mode. */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Arial, Helvetica, sans-serif; /* Consider changing to geistSans.variable if intended */
 }

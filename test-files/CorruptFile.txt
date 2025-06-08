@@ -1,0 +1,13 @@
+�This is a UTF-8 file with intentional corruption.
+
+Normal text line.
+
+Another valid line.
+
+\xFF\xFEThis line includes invalid UTF-8 byte sequences.
+
+Some more regular content here.
+
+Embedded null character: \x00 should not exist.
+
+End of simulated corruption.

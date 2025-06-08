@@ -1,8 +1,17 @@
 import type { ExtractedConcepts } from '@/types';
 // DOMAIN_SCHEMA import removed as it's not used in the new extract method.
-import { DeepSeekAdapter } from '../adapters/DeepSeekAdapter'; // Changed from OpenAIAdapter
+import { LLMAdapterRouter } from './LLMAdapterRouter';
 import { jsonrepair } from 'jsonrepair';
 // import type OpenAI from 'openai'; // Keep for ChatCompletionMessageParam type if DeepSeekAdapter reuses it -> Removing as changing messages type
+
+function stripMarkdownWrappers(raw: string): string {
+    if (typeof raw !== 'string') {
+        return raw; // Or handle as an error, or return empty string
+    }
+    return raw
+        .replace(/^\s*```(?:json)?\s*/i, '')  // Remove starting code block
+        .replace(/\s*```$/i, '');             // Remove ending code block
+}
 
 export class ExtractorAgent {
     public static async extract(chunkText: string): Promise<ExtractedConcepts> {
@@ -25,43 +34,34 @@ Given the following research text, extract the concepts into the following struc
 }
 
 Only use values mentioned in the text. Return all outputs as string arrays. If a field is not found, leave it as an empty array.
-Output your answer in raw JSON format, no explanation.
+
+⚠ IMPORTANT OUTPUT FORMAT RULE:
+- DO NOT include markdown code blocks (such as \`\`\`json ... \`\`\`).
+- DO NOT include any commentary or explanation.
+- Output must be STRICT raw JSON only.
 `;
         // The user's example in the last message had the prompt split into system and user roles.
         // The original prompt in ExtractorAgent was a single block passed to a user role.
         // Adopting the system/user role split as per the most recent instruction for the patch.
 
-        // Build messages with the specific type expected by DeepSeekAdapter
-        const messages: { role: 'system' | 'user'; content: string }[] = [
-            {
-                role: "system", // System role explaining the task
-                content: promptForSystem // The detailed instructions for the LLM
-            },
-            {
-                role: "user", // User role providing the specific text to process
-                content: chunkText // Use chunkText directly
-            }
-        ];
-
         // 4.c Call the LLM
-        const response = await DeepSeekAdapter.callChatModel({
-            model: "deepseek-chat", // Ensure model is explicitly set
-            messages: messages,      // Pass the constructed messages array
-            temperature: 0.2,        // Set temperature (user had 0, then 0.25, using 0.2 as per last console log)
-            response_format: { type: "json_object" } // Specify JSON object response format
+        const response = await LLMAdapterRouter.call({
+            systemPrompt: promptForSystem,
+            userPrompt: chunkText,
         });
 
         // 4.d Parse output (use repair fallback)
         let parsed: Partial<ExtractedConcepts> = {};
-        const responseContent = response.content;
+        const responseContent = (response as { content: string }).content;
 
         if (typeof responseContent === 'string' && responseContent.trim() !== '') {
+            const cleanedContent = stripMarkdownWrappers(responseContent);
             try {
-                parsed = JSON.parse(responseContent);
+                parsed = JSON.parse(cleanedContent);
             } catch (initialError) {
-                console.warn("[ExtractorAgent] Initial JSON parsing failed. Attempting repair.", String(initialError));
+                console.warn("[ExtractorAgent] Initial JSON parsing of cleaned content failed. Attempting repair on original content.", String(initialError));
                 try {
-                    const repairedJsonString = jsonrepair(responseContent);
+                    const repairedJsonString = jsonrepair(responseContent); // Repair original content
                     parsed = JSON.parse(repairedJsonString);
                 } catch (repairError) {
                     console.error("[ExtractorAgent] JSON repair also failed. Proceeding with empty data.", String(repairError));

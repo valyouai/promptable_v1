@@ -1,40 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LLMAdapterRouter } from '@/server/llm/LLMAdapterRouter';
-import type { ExtractedConcepts, PersonaType, SystemPromptResult, GenerationConfig } from '@/types';
 import { buildSystemPrompt } from '@/server/llm/SystemPromptBuilder';
+import { LLMAdapterRouter } from '@/server/llm/LLMAdapterRouter';
+import type { ExtractedConcepts, PersonaType, GenerationConfig } from '@/types';
 
 export async function POST(req: NextRequest) {
+    console.log('[generate-system-prompt API] Received POST request.');
     try {
         const body = await req.json();
+
+        // 🔧 17D HARNESS PATCH INJECTION — BEGIN
+        if (process.env.TEST_MODE === 'true' && req.nextUrl.searchParams.get("forceError") === "true") {
+            console.warn("[17D Test Harness] Simulated synthesis failure triggered.");
+            return NextResponse.json({ error: "Simulated synthesis failure for 17D test." }, { status: 400 });
+        }
+        // 🔧 17D HARNESS PATCH INJECTION — END
+
         const { extractedConcepts, persona, contentType, generationConfig } = body;
 
-        const systemPrompt = buildSystemPrompt({ extractedConcepts, persona, contentType, generationConfig });
-        const userPrompt = '';  // or whatever userPrompt you pass, if applicable
+        // Defensive type enforcement
+        if (!extractedConcepts || !persona || !contentType) {
+            return NextResponse.json(
+                { error: 'Missing required fields: extractedConcepts, persona, or contentType.' },
+                { status: 400 }
+            );
+        }
 
-        const result = await LLMAdapterRouter.call({
-            systemPrompt,
-            userPrompt
+        const systemPrompt = buildSystemPrompt({
+            extractedConcepts: extractedConcepts as ExtractedConcepts,
+            persona: persona as PersonaType,
+            contentType: contentType as string,
+            generationConfig: generationConfig as GenerationConfig || {},
         });
 
-        // The LLMAdapterRouter.call returns { content: string }, so we need to wrap it into SystemPromptResult
-        // for the frontend to correctly consume it.
-        const finalResult: SystemPromptResult = {
-            success: true,
-            systemPrompt: (result as { content: string }).content, // Cast result to access content property
-            extractedConcepts: extractedConcepts, // Re-use extractedConcepts from the request body
-            metadata: { // Placeholder metadata - you might want to generate more robust metadata
-                documentTitle: 'Generated Prompt',
-                persona: persona,
-                contentType: contentType,
-                confidenceScore: 1.0, // Assuming high confidence for now
-                timestamp: new Date().toISOString(),
-            }
-        };
+        const response = await LLMAdapterRouter.call({
+            systemPrompt: systemPrompt,
+            userPrompt: ''
+        });
 
-        return NextResponse.json(finalResult);
+        return NextResponse.json({ synthesizedPrompt: response });
+
     } catch (err: unknown) {
-        console.error('[generate-system-prompt API] Error:', err);
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        return NextResponse.json({ error: 'Internal Server Error', details: message }, { status: 500 });
+        console.error('[generate-system-prompt API] Server error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown internal server error';
+        return NextResponse.json({ error: 'Internal ServerError', details: errorMessage }, { status: 500 });
     }
 } 
