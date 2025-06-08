@@ -25,6 +25,17 @@ import { MultiHopComposerEngine } from "./reasoning-composer/MultiHopComposerEng
 import { MultiHopComposerInput, MultiHopComposerOutput } from "./reasoning-composer/MultiHopComposerTypes";
 import { TransferKernelConceptSet } from "@/server/llm/prompt-generator/PromptGeneratorTypes";
 
+// --- BEGIN PHASE 24.A Traceability Agent ---
+interface ReasoningTrace {
+    traceId: string;
+    composedMapping: string;
+    origin: string;
+    persona: string;
+    domain: string;
+    timestamp: string;
+}
+// --- END PHASE 24.A Traceability Agent ---
+
 // Define output shape for the original extraction part (this was local before, now explicitly named for clarity)
 export class ExtractionOrchestrator {
 
@@ -223,6 +234,20 @@ export class ExtractionOrchestrator {
         const multiHopOutput: MultiHopComposerOutput = MultiHopComposerEngine.compose(composerInput);
         processingLog.push('Multi-Hop Reasoning Composer executed.');
         console.log("--- Multi-Hop Reasoning Output ---", multiHopOutput);
+
+        // --- BEGIN PHASE 24.A Traceability Agent Instrumentation ---
+        const reasoningTrace: ReasoningTrace[] = (multiHopOutput.composedMappings || []).map((mapping, idx) => ({
+            traceId: `composer-${idx + 1}`,
+            composedMapping: mapping,
+            origin: "MultiHopComposerEngine",
+            persona: persona,
+            domain: promptCompilerDomainKey,
+            timestamp: new Date().toISOString()
+        }));
+
+        processingLog.push(`Traceability Agent captured ${reasoningTrace.length} composed reasoning chains.`);
+        console.log("--- Reasoning Trace Map ---", reasoningTrace);
+        // --- END PHASE 24.A Traceability Agent Instrumentation ---
 
         // --- BEGIN PHASE 23.D Reasoning Composition Fusion Layer ---
         let conceptsForCompiler: TransferKernelConceptSet;
