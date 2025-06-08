@@ -24,6 +24,7 @@ import { normalizeToTraceableConcept } from "@/server/llm/utils/TraceableConcept
 import { MultiHopComposerEngine } from "./reasoning-composer/MultiHopComposerEngine";
 import { MultiHopComposerInput, MultiHopComposerOutput } from "./reasoning-composer/MultiHopComposerTypes";
 import { TransferKernelConceptSet } from "@/server/llm/prompt-generator/PromptGeneratorTypes";
+import { FusionPolicyEngine } from "./fusion-policy/FusionPolicyEngine"; // Phase 26.A: Import FusionPolicyEngine
 
 // --- BEGIN PHASE 24.A Traceability Agent ---
 interface ReasoningTrace {
@@ -223,9 +224,26 @@ export class ExtractionOrchestrator {
         };
         processingLog.push('Concept set normalized to TraceableConcepts.');
 
+        // --- BEGIN PHASE 26.A Fusion Policy Application ---
+        const policyAdjustedConceptSet = FusionPolicyEngine.applyPolicy(normalizedConceptSet);
+        processingLog.push(`Fusion policy (value normalization) applied to Principles: ${normalizedConceptSet.personaPrinciples?.length || 0} -> ${policyAdjustedConceptSet.personaPrinciples?.length || 0}`);
+        processingLog.push(`Fusion policy (value normalization) applied to Methods: ${normalizedConceptSet.personaMethods?.length || 0} -> ${policyAdjustedConceptSet.personaMethods?.length || 0}`);
+        processingLog.push(`Fusion policy (value normalization) applied to Frameworks: ${normalizedConceptSet.personaFrameworks?.length || 0} -> ${policyAdjustedConceptSet.personaFrameworks?.length || 0}`);
+        processingLog.push(`Fusion policy (value normalization) applied to Theories: ${normalizedConceptSet.personaTheories?.length || 0} -> ${policyAdjustedConceptSet.personaTheories?.length || 0}`);
+        // --- END PHASE 26.A Fusion Policy Application ---
+
+        // --- BEGIN PHASE 26.B Semantic Equivalence Collapse ---
+        const deduplicatedConceptSet = FusionPolicyEngine.collapseSemanticEquivalents(policyAdjustedConceptSet);
+        const principlesReduced = (policyAdjustedConceptSet.personaPrinciples?.length || 0) - (deduplicatedConceptSet.personaPrinciples?.length || 0);
+        const methodsReduced = (policyAdjustedConceptSet.personaMethods?.length || 0) - (deduplicatedConceptSet.personaMethods?.length || 0);
+        const frameworksReduced = (policyAdjustedConceptSet.personaFrameworks?.length || 0) - (deduplicatedConceptSet.personaFrameworks?.length || 0);
+        const theoriesReduced = (policyAdjustedConceptSet.personaTheories?.length || 0) - (deduplicatedConceptSet.personaTheories?.length || 0);
+        processingLog.push(`Fusion Policy: Semantic equivalence collapse applied. ${principlesReduced} principle duplicates, ${methodsReduced} method duplicates, ${frameworksReduced} framework duplicates, ${theoriesReduced} theory duplicates eliminated.`);
+        // --- END PHASE 26.B Semantic Equivalence Collapse ---
+
         // --- BEGIN PHASE 25.B Reasoning Density Score Calculation ---
-        const numPrinciples = normalizedConceptSet.personaPrinciples?.length || 0;
-        const numMethods = normalizedConceptSet.personaMethods?.length || 0;
+        const numPrinciples = deduplicatedConceptSet.personaPrinciples?.length || 0;
+        const numMethods = deduplicatedConceptSet.personaMethods?.length || 0;
         let densityScore: number;
 
         if (numPrinciples === 0 || numMethods === 0) {
@@ -242,7 +260,7 @@ export class ExtractionOrchestrator {
         // --- BEGIN PHASE 23.C Multi-Hop Composer Integration ---
         processingLog.push('Preparing input for Multi-Hop Reasoning Composer...');
         const composerInput: MultiHopComposerInput = {
-            conceptSet: normalizedConceptSet,
+            conceptSet: deduplicatedConceptSet, // Phase 26.B: Use deduplicatedConceptSet
             persona: persona,
             domain: promptCompilerDomainKey,
         };
@@ -287,24 +305,24 @@ export class ExtractionOrchestrator {
 
         // --- BEGIN PHASE 23.D Reasoning Composition Fusion Layer ---
         let conceptsForCompiler: TransferKernelConceptSet;
-        if (filteredMappings && filteredMappings.length > 0) { // Phase 25.C: Use filteredMappings
+        if (filteredMappings && filteredMappings.length > 0) {
             conceptsForCompiler = {
                 personaPrinciples: [
-                    ...normalizedConceptSet.personaPrinciples,
-                    ...filteredMappings.map(mapping => ({ // Phase 25.C: Use filteredMappings
+                    ...(deduplicatedConceptSet.personaPrinciples || []), // Phase 26.B: Use deduplicatedConceptSet
+                    ...filteredMappings.map(mapping => ({
                         value: mapping,
                         source: "multi-hop-composer",
-                        score: scoreMap.get(mapping) ?? 1.0 // Phase 25.C: Use scoreMap as per blueprint
+                        score: scoreMap.get(mapping) ?? 1.0
                     }))
                 ],
-                personaMethods: normalizedConceptSet.personaMethods,
-                personaFrameworks: normalizedConceptSet.personaFrameworks,
-                personaTheories: normalizedConceptSet.personaTheories,
+                personaMethods: deduplicatedConceptSet.personaMethods || [], // Phase 26.B: Use deduplicatedConceptSet
+                personaFrameworks: deduplicatedConceptSet.personaFrameworks || [], // Phase 26.B: Use deduplicatedConceptSet
+                personaTheories: deduplicatedConceptSet.personaTheories || [], // Phase 26.B: Use deduplicatedConceptSet
             };
-            processingLog.push(`Fusion complete: ${filteredMappings.length} filtered composedMappings injected into personaPrinciples.`); // Phase 25.C: Updated log
+            processingLog.push(`Fusion complete: ${filteredMappings.length} filtered composedMappings injected into personaPrinciples.`);
         } else {
-            conceptsForCompiler = normalizedConceptSet; // Use original if no composed mappings or all filtered out
-            processingLog.push('No composedMappings passed filtering or none were generated; using normalized concepts for prompt compilation.'); // Phase 25.C: Updated log
+            conceptsForCompiler = deduplicatedConceptSet; // Phase 26.B: Use deduplicatedConceptSet
+            processingLog.push('No composedMappings passed filtering or none were generated; using deduplicated concepts for prompt compilation.');
         }
         console.log("--- Fused Concept Set for Compiler ---", conceptsForCompiler);
         // --- END PHASE 23.D Reasoning Composition Fusion Layer ---
