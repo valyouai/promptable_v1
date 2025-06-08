@@ -223,6 +223,22 @@ export class ExtractionOrchestrator {
         };
         processingLog.push('Concept set normalized to TraceableConcepts.');
 
+        // --- BEGIN PHASE 25.B Reasoning Density Score Calculation ---
+        const numPrinciples = normalizedConceptSet.personaPrinciples?.length || 0;
+        const numMethods = normalizedConceptSet.personaMethods?.length || 0;
+        let densityScore: number;
+
+        if (numPrinciples === 0 || numMethods === 0) {
+            densityScore = 1.0; // Max score for extreme sparsity or if density cannot be meaningfully calculated
+        } else {
+            densityScore = 1 / (numPrinciples * numMethods);
+        }
+        // Ensure score is bounded [0,1] - formula naturally does this if numPrinciples*numMethods >= 1
+        // If numPrinciples*numMethods is very large, score can be very small.
+        densityScore = Math.max(0, Math.min(1, densityScore));
+        processingLog.push(`Phase 25.B: Calculated reasoning density score: ${densityScore.toFixed(4)} (P: ${numPrinciples}, M: ${numMethods})`);
+        // --- END PHASE 25.B Reasoning Density Score Calculation ---
+
         // --- BEGIN PHASE 23.C Multi-Hop Composer Integration ---
         processingLog.push('Preparing input for Multi-Hop Reasoning Composer...');
         const composerInput: MultiHopComposerInput = {
@@ -236,6 +252,24 @@ export class ExtractionOrchestrator {
         processingLog.push('Multi-Hop Reasoning Composer executed.');
         console.log("--- Multi-Hop Reasoning Output ---", multiHopOutput);
 
+        // --- BEGIN PHASE 25.C Reasoning Density Threshold Filtering ---
+        const scoreThreshold = 0.02;  // Starting default threshold (adjustable)
+
+        const scoreMap = new Map<string, number>();
+        (multiHopOutput.composedMappings || []).forEach(mapping => {
+            scoreMap.set(mapping, densityScore); // densityScore from Phase 25.B
+        });
+
+        const filteredMappings = (multiHopOutput.composedMappings || []).filter(mapping => {
+            const currentMappingScore = scoreMap.get(mapping);
+            // Default to a high score (e.g., 1.0) if not found, consistent with fusion logic, though all mappings should be in the map.
+            return (currentMappingScore ?? 1.0) >= scoreThreshold;
+        });
+
+        processingLog.push(`Phase 25.C Threshold filtering complete: ${(multiHopOutput.composedMappings || []).length - filteredMappings.length} mappings discarded, ${filteredMappings.length} mappings retained. Threshold: ${scoreThreshold}, Batch Score Used: ${densityScore.toFixed(4)}`);
+        console.log("--- Filtered Multi-Hop Composer Output (Phase 25.C) ---", filteredMappings);
+        // --- END PHASE 25.C Reasoning Density Threshold Filtering ---
+
         // --- BEGIN PHASE 24.A Traceability Agent Instrumentation ---
         const reasoningTrace: ReasoningTrace[] = (multiHopOutput.composedMappings || []).map((mapping, idx) => ({
             traceId: `composer-${idx + 1}`,
@@ -244,7 +278,7 @@ export class ExtractionOrchestrator {
             persona: persona,
             domain: promptCompilerDomainKey,
             timestamp: new Date().toISOString(),
-            score: 0.75  // Apply same provisional score for now
+            score: densityScore  // Phase 25.B: Apply calculated density score
         }));
 
         processingLog.push(`Traceability Agent captured ${reasoningTrace.length} composed reasoning chains.`);
@@ -253,37 +287,38 @@ export class ExtractionOrchestrator {
 
         // --- BEGIN PHASE 23.D Reasoning Composition Fusion Layer ---
         let conceptsForCompiler: TransferKernelConceptSet;
-        if (multiHopOutput.composedMappings && multiHopOutput.composedMappings.length > 0) {
+        if (filteredMappings && filteredMappings.length > 0) { // Phase 25.C: Use filteredMappings
             conceptsForCompiler = {
                 personaPrinciples: [
                     ...normalizedConceptSet.personaPrinciples,
-                    ...multiHopOutput.composedMappings.map(mapping => ({
+                    ...filteredMappings.map(mapping => ({ // Phase 25.C: Use filteredMappings
                         value: mapping,
-                        source: "multi-hop-composer"
+                        source: "multi-hop-composer",
+                        score: scoreMap.get(mapping) ?? 1.0 // Phase 25.C: Use scoreMap as per blueprint
                     }))
                 ],
                 personaMethods: normalizedConceptSet.personaMethods,
                 personaFrameworks: normalizedConceptSet.personaFrameworks,
                 personaTheories: normalizedConceptSet.personaTheories,
             };
-            processingLog.push(`Fusion complete: ${multiHopOutput.composedMappings.length} composedMappings injected into personaPrinciples.`);
+            processingLog.push(`Fusion complete: ${filteredMappings.length} filtered composedMappings injected into personaPrinciples.`); // Phase 25.C: Updated log
         } else {
-            conceptsForCompiler = normalizedConceptSet; // Use original if no composed mappings
-            processingLog.push('No composedMappings from Multi-Hop Composer; using normalized concepts for prompt compilation.');
+            conceptsForCompiler = normalizedConceptSet; // Use original if no composed mappings or all filtered out
+            processingLog.push('No composedMappings passed filtering or none were generated; using normalized concepts for prompt compilation.'); // Phase 25.C: Updated log
         }
-        console.log("--- Fused Concept Set for Compiler ---", conceptsForCompiler); // ADDED Log for fused set
+        console.log("--- Fused Concept Set for Compiler ---", conceptsForCompiler);
         // --- END PHASE 23.D Reasoning Composition Fusion Layer ---
 
         // --- BEGIN PHASE 25.A Scoring Hook (Initial Stub) ---
         if (conceptsForCompiler.personaPrinciples) {
             conceptsForCompiler.personaPrinciples = conceptsForCompiler.personaPrinciples.map((concept) => {
-                let assignedScore = 1.0; // Temporary fixed score (for now)
+                let assignedScore = 1.0; // Default score for concepts not from multi-hop-composer
                 if (concept.source === "multi-hop-composer") {
-                    assignedScore = 0.75; // Example: composer outputs start slightly lower by default
+                    assignedScore = densityScore; // Phase 25.B: Apply calculated density score
                 }
                 return { ...concept, score: assignedScore };
             });
-            processingLog.push(`Phase 25.A scoring hook assigned provisional scores to ${conceptsForCompiler.personaPrinciples.length} personaPrinciples.`);
+            processingLog.push(`Phase 25.B Reasoning Density Scorer assigned dynamic scores to ${conceptsForCompiler.personaPrinciples.length} personaPrinciples.`);
         }
         // --- END PHASE 25.A Scoring Hook ---
 
