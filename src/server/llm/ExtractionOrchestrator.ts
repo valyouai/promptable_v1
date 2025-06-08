@@ -1,4 +1,4 @@
-import type { ExtractedConcepts, /* QAValidationResult, */ CognitiveKernelResult, ExtractionResult as GlobalExtractionResult } from '@/types';
+import type { ExtractedConcepts, /* QAValidationResult, */ CognitiveKernelResult, ExtractionResult as GlobalExtractionResult, PersonaType, TraceableConcept } from '@/types';
 import { SemanticChunker, type Chunk as SemanticChunk } from '@/lib/chunking/SemanticChunker';
 import { ExtractorAgent } from './ExtractorAgent';
 import { PatternNormalizer } from '../extraction/PatternNormalizer';
@@ -7,10 +7,20 @@ import { DependencyModel, type DependencyInsight } from './DependencyModel';
 import { ConfidenceFusionEngine } from './ConfidenceFusionEngine';
 import { ReinforcementAgent } from './ReinforcementAgent';
 import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
+import { selfCorrectExtraction } from './SelfCorrectionController';
 
 // 🧠 Phase 14/15: Cognitive Kernel Imports
 import { OrchestrationController } from './OrchestrationController';
-import type { PersonaType } from './RelevanceFilteringAgent';
+// 🚀 Phase 22.F: Unified Transfer Kernel Engine Import
+import { TransferKernelEngine } from "./transfer-kernel/TransferKernelEngine";
+import type { OntologyDomain } from "./ontology-scaffold/OntologyScaffoldTypes"; // Still needed for domain determination
+// import { PromptGeneratorEngine } from "./prompt-generator/PromptGeneratorEngine"; // REMOVED FOR 23.B
+import { PersonaTransferProfiles } from "./persona-transfer/PersonaTransferProfiles";
+import { PersonaTransferOverrides } from "./persona-transfer/PersonaTransferOverrides";
+import { PromptCompilerEngine } from "./prompt-compiler/PromptCompilerEngine";
+import { VerificationAgentEngine } from "./verification-agent/VerificationAgentEngine";
+import { PromptCompilerInput } from "./prompt-compiler/PromptCompilerTypes";
+import { normalizeToTraceableConcept } from "@/server/llm/utils/TraceableConceptNormalizer";
 
 // Define output shape for the original extraction part (this was local before, now explicitly named for clarity)
 export class ExtractionOrchestrator {
@@ -21,38 +31,13 @@ export class ExtractionOrchestrator {
             methods: [],
             frameworks: [],
             theories: [],
-            notes: "",
         };
-
-        const allNotes: string[] = [];
 
         for (const chunkConcepts of chunkConceptsList) {
             if (chunkConcepts.principles) merged.principles.push(...chunkConcepts.principles);
             if (chunkConcepts.methods) merged.methods.push(...chunkConcepts.methods);
             if (chunkConcepts.frameworks) merged.frameworks.push(...chunkConcepts.frameworks);
             if (chunkConcepts.theories) merged.theories.push(...chunkConcepts.theories);
-            if (chunkConcepts.notes && chunkConcepts.notes.trim() !== "") {
-                allNotes.push(chunkConcepts.notes.trim());
-            }
-
-            const optionalFields: (keyof ExtractedConcepts)[] = [
-                'Research Objective', 'Methods', 'Dataset(s)',
-                'Key Findings', 'Limitations', 'Future Work', 'Applications'
-            ];
-            for (const field of optionalFields) {
-                if (chunkConcepts[field] && typeof chunkConcepts[field] === 'string' && !merged[field]) {
-                    merged[field] = chunkConcepts[field] as string;
-                }
-            }
-        }
-
-        merged.principles = [...new Set(merged.principles)];
-        merged.methods = [...new Set(merged.methods)];
-        merged.frameworks = [...new Set(merged.frameworks)];
-        merged.theories = [...new Set(merged.theories)];
-
-        if (allNotes.length > 0) {
-            merged.notes = allNotes.join("\n\n--- Notes from Chunk ---\n\n");
         }
 
         return merged;
@@ -88,10 +73,8 @@ export class ExtractionOrchestrator {
 
         if (allChunkConcepts.length === 0 && chunks.length > 0) {
             processingLog.push("All chunks failed to extract concepts. Aborting further processing.");
-            // Consider what to return or how to signal this failure. 
-            // For now, we'll proceed, and downstream agents will handle empty concepts.
-            // Fallback to an empty structure to prevent crashes, though this should ideally result in an error response.
-            const emptyConcepts: ExtractedConcepts = { principles: [], methods: [], frameworks: [], theories: [], notes: "All chunk extractions failed." };
+            // Fallback to an empty structure aligned with new ExtractedConcepts
+            const emptyConcepts: ExtractedConcepts = { principles: [], methods: [], frameworks: [], theories: [] }; // 'notes' field removed
             allChunkConcepts.push(emptyConcepts);
         }
 
@@ -115,9 +98,9 @@ export class ExtractionOrchestrator {
         const fieldsToAnalyze: (keyof ExtractedConcepts)[] = ['principles', 'methods', 'frameworks', 'theories'];
 
         for (const sourceField of fieldsToAnalyze) {
+            // Updated check for TraceableConcept[]
             if (normalizedConcepts[sourceField] &&
-                ((Array.isArray(normalizedConcepts[sourceField]) && (normalizedConcepts[sourceField] as string[]).length > 0) ||
-                    typeof normalizedConcepts[sourceField] === 'string' && (normalizedConcepts[sourceField] as string).length > 0)
+                (Array.isArray(normalizedConcepts[sourceField]) && (normalizedConcepts[sourceField] as TraceableConcept[]).length > 0)
             ) {
                 // Assuming getPotentialDependencies is part of your DomainSchema or a similar utility accessible here
                 // For now, this matches the existing structure.
@@ -149,14 +132,14 @@ export class ExtractionOrchestrator {
         processingLog.push('Reinforcement agent pass complete on merged concepts.');
 
         // Step 8: Self-Correction Loop (placeholder)
-        const selfCorrectionDetailsForGlobalResult: GlobalExtractionResult['selfCorrectionDetails'] = undefined;
+        // const selfCorrectionDetailsForGlobalResult: GlobalExtractionResult['selfCorrectionDetails'] = undefined; // Original placeholder removed
 
         // Step 9: QA Validation (operates on refined concepts from reinforcement, with full document text)
         const qaValidation = await ExtractionQAAgent.validate(documentText, reinforcementOutput.refinedConcepts);
         processingLog.push('QA validation complete on final concepts.');
 
         // Assemble the extractionResult object
-        const extractionResult: GlobalExtractionResult = {
+        const initialExtractionResult: GlobalExtractionResult = {
             finalConcepts: reinforcementOutput.refinedConcepts,
             ambiguityScores: ambiguityScores.map(as => ({ ...as, field: as.field as keyof ExtractedConcepts })),
             overallConfidence: confidenceResult.overallConfidence,
@@ -169,20 +152,115 @@ export class ExtractionOrchestrator {
                     needsFurtherReview: reinforcementOutput.confidenceScore !== undefined ? reinforcementOutput.confidenceScore < 0.7 : true,
                 }
                 : undefined,
-            selfCorrectionDetails: selfCorrectionDetailsForGlobalResult,
             qaValidation,
         };
 
+        // Invoke Self-Correction <--- PHASE 20 INTEGRATION
+        processingLog.push('Invoking self-correction loop...');
+        const selfCorrectionResultData = await selfCorrectExtraction(initialExtractionResult, documentText, persona);
+        processingLog.push(`Self-correction loop complete. Passes run: ${selfCorrectionResultData.passesRun}. Final confidence after correction: ${selfCorrectionResultData.finalOverallConfidence.toFixed(2)}`);
+
+        const extractionResultWithCorrection: GlobalExtractionResult = {
+            ...initialExtractionResult,
+            selfCorrectionDetails: selfCorrectionResultData,
+        };
+
+        // Phase 22.F: Invoke unified Transfer Kernel Engine
+        processingLog.push('Invoking Transfer Kernel Engine...');
+
+        // Domain for TransferKernelEngine (must be of type OntologyDomain)
+        let transferKernelDomain: OntologyDomain = "literature"; // Default for TransferKernel
+        if (persona === "educator") {
+            transferKernelDomain = "education";
+        } else if (persona === "creator") {
+            transferKernelDomain = "business";
+        } else if (persona === "researcher") {
+            // For TransferKernel, researcher still maps to literature for its ontology alignment needs
+            transferKernelDomain = "literature";
+        }
+        processingLog.push(`Transfer Kernel domain: ${transferKernelDomain} (Persona: ${persona})`);
+
+        const personaTransferOutput = TransferKernelEngine.runTransfer(
+            extractionResultWithCorrection.finalConcepts,
+            persona,
+            transferKernelDomain
+        );
+        processingLog.push('Transfer Kernel Engine processing complete.');
+        console.log("--- Transfer Kernel Engine Output (personaTransferOutput):", personaTransferOutput);
+
+        const personaProfile = PersonaTransferOverrides[persona] ?? PersonaTransferProfiles[persona];
+
+        let promptCompilerDomainKey: string = "ai_art";
+        if (persona === "educator") {
+            promptCompilerDomainKey = "education";
+        } else if (persona === "creator") {
+            promptCompilerDomainKey = "business";
+        } else if (persona === "researcher") {
+            promptCompilerDomainKey = "medicine";
+        }
+        processingLog.push(`Prompt Compiler domain key: ${promptCompilerDomainKey}`);
+
+        // PATCHED SECTION: Normalize personaTransferOutput before using it as conceptSet
+        const normalizedConceptSet = {
+            personaPrinciples: normalizeToTraceableConcept(personaTransferOutput.personaPrinciples as unknown as string[]),
+            personaMethods: normalizeToTraceableConcept(personaTransferOutput.personaMethods as unknown as string[]),
+            personaFrameworks: normalizeToTraceableConcept(personaTransferOutput.personaFrameworks as unknown as string[]),
+            personaTheories: normalizeToTraceableConcept(personaTransferOutput.personaTheories as unknown as string[]),
+        };
+
+        const promptCompilerInput: PromptCompilerInput = {
+            persona: persona,
+            domain: promptCompilerDomainKey,
+            conceptSet: normalizedConceptSet, // USE NORMALIZED VERSION
+            personaProfile: personaProfile
+        };
+        processingLog.push('Prompt Compiler input prepared.');
+
+        const compiledPrompt = PromptCompilerEngine.compile(promptCompilerInput);
+        processingLog.push('Prompt Compiler Engine executed.');
+        console.log("--- ADAPTIVE SYSTEM PROMPT ---");
+        console.log(compiledPrompt.fullSystemPrompt);
+
+        // Verification Agent Integration (Phase 23.D)
+        const verificationInput = {
+            systemPrompt: compiledPrompt.fullSystemPrompt,
+            persona,
+            domain: promptCompilerDomainKey, // Use the domain key that was passed to PromptCompiler
+        };
+
+        const verificationResult = VerificationAgentEngine.verify(verificationInput);
+
+        processingLog.push("Verification Agent check complete.");
+        console.log("--- VERIFICATION RESULT ---", verificationResult);
+
+        if (!verificationResult.passed) {
+            console.warn("⚠ VerificationAgent detected issues:", verificationResult.issues);
+        }
+
+        // Phase 22.E logic (preserved): Prepare concepts for existing Cognitive Orchestration Layer
+        const conceptsForCognitiveOrchestration: ExtractedConcepts = {
+            // Preserve non-core concepts (notes, research objective, etc.) from the main extraction pipeline
+            ...extractionResultWithCorrection.finalConcepts,
+            // Override core concepts with the fully adapted ones from the transfer pipeline
+            principles: personaTransferOutput.personaPrinciples,
+            methods: personaTransferOutput.personaMethods,
+            frameworks: personaTransferOutput.personaFrameworks,
+            theories: personaTransferOutput.personaTheories,
+        };
+        processingLog.push('Mapped persona-adapted concepts to ExtractedConcepts for cognitive orchestration.');
+        console.log("--- Concepts for Cognitive Orchestration ---", conceptsForCognitiveOrchestration);
+
         // Cognitive orchestration layer post-extraction
         const cognitiveOutput = OrchestrationController.runCognitiveOrchestration(
-            extractionResult.finalConcepts,
+            conceptsForCognitiveOrchestration, // Use the fully adapted concepts
             persona
         );
         processingLog.push('Phase 15 Cognitive Layer Orchestration invoked successfully.');
 
         const cognitiveKernelResult: CognitiveKernelResult = {
-            extractionResult,
+            extractionResult: extractionResultWithCorrection,
             cognitiveOutput,
+            promptTraceMap: compiledPrompt.traceMap,
         };
 
         return cognitiveKernelResult;
