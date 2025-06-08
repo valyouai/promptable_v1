@@ -33,6 +33,7 @@ interface ReasoningTrace {
     persona: string;
     domain: string;
     timestamp: string;
+    score?: number;  // Scoring hook: trace-level evaluation
 }
 // --- END PHASE 24.A Traceability Agent ---
 
@@ -242,7 +243,8 @@ export class ExtractionOrchestrator {
             origin: "MultiHopComposerEngine",
             persona: persona,
             domain: promptCompilerDomainKey,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            score: 0.75  // Apply same provisional score for now
         }));
 
         processingLog.push(`Traceability Agent captured ${reasoningTrace.length} composed reasoning chains.`);
@@ -271,6 +273,19 @@ export class ExtractionOrchestrator {
         }
         console.log("--- Fused Concept Set for Compiler ---", conceptsForCompiler); // ADDED Log for fused set
         // --- END PHASE 23.D Reasoning Composition Fusion Layer ---
+
+        // --- BEGIN PHASE 25.A Scoring Hook (Initial Stub) ---
+        if (conceptsForCompiler.personaPrinciples) {
+            conceptsForCompiler.personaPrinciples = conceptsForCompiler.personaPrinciples.map((concept) => {
+                let assignedScore = 1.0; // Temporary fixed score (for now)
+                if (concept.source === "multi-hop-composer") {
+                    assignedScore = 0.75; // Example: composer outputs start slightly lower by default
+                }
+                return { ...concept, score: assignedScore };
+            });
+            processingLog.push(`Phase 25.A scoring hook assigned provisional scores to ${conceptsForCompiler.personaPrinciples.length} personaPrinciples.`);
+        }
+        // --- END PHASE 25.A Scoring Hook ---
 
         // --- END PHASE 23.C Multi-Hop Composer Integration (Logic now part of 23.D Fusion) ---
 

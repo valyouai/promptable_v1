@@ -1,21 +1,35 @@
 import type { CognitiveOrchestrationOutput } from '@/server/llm/OrchestrationController';
 
-export type ExtractedConcepts = {
-    principles: string[];
-    methods: string[];
-    frameworks: string[];
-    theories: string[];
-    notes?: string;
+// Define PersonaType first as it's a dependency for PersonaReinforcementProfile
+export type PersonaType = 'creator' | 'researcher' | 'educator';
+export const ALLOWED_PERSONAS: PersonaType[] = ['creator', 'researcher', 'educator'];
 
-    // New fields targeted by MultiPassRefinementAgent
-    'Research Objective'?: string;
-    'Methods'?: string; // Capital 'M', singular string, distinct from lowercase 'methods' array
-    'Dataset(s)'?: string;
-    'Key Findings'?: string;
-    'Limitations'?: string;
-    'Future Work'?: string;
-    'Applications'?: string;
-} & Record<string, unknown>;
+// Phase 24: Traceability Agent Blueprint
+export interface TraceableConcept {
+    value: string;
+    source: string;  // e.g., page number, section header, or document ID segment
+    score?: number;  // Scoring hook: confidence/relevance (optional for backward compatibility)
+}
+
+// Phase 21A: Define PersonaReinforcementProfile directly
+export interface PersonaReinforcementProfile {
+    persona: PersonaType;
+    fieldWeights: Record<string, number>;
+    ambiguityTolerance: number;
+    maxCorrectionPasses: number;
+    correctionAggressiveness: number;
+    gapSensitivity: number;
+    analogyDivergenceFactor: number;
+    hypothesisExplorationFactor: number;
+}
+
+// MODIFIED for Phase 24: Traceability Agent Blueprint
+export interface ExtractedConcepts {
+    principles: TraceableConcept[];
+    methods: TraceableConcept[];
+    frameworks: TraceableConcept[];
+    theories: TraceableConcept[];
+}
 
 export interface SystemPromptResult {
     success: boolean;
@@ -68,6 +82,7 @@ export interface ExtractionResult {
         correctionLog: string[];
         passDetails: SelfCorrectionPassDetailForType[];
         finalOverallConfidence?: number;
+        profileUsed?: PersonaReinforcementProfile;
     };
     qaValidation?: QAValidationResult;
     fusionLog?: FusionLogEntry[]; // Added fusionLog property
@@ -119,20 +134,39 @@ export interface SelfCorrectionPassDetailForType {
     overallConfidenceAfterPass?: number;
 }
 
+// Phase 24: Added for Traceability Agent output
+export interface PromptTraceMap {
+    principles: TraceableConcept[];
+    methods: TraceableConcept[];
+    frameworks: TraceableConcept[];
+    theories: TraceableConcept[];
+}
+
 // Phase 15: New composite type for combined Extraction and Cognitive Kernel output
 // No need to re-import ExtractionResult as it is defined in this file.
 // CognitiveOrchestrationOutput is available due to the re-export earlier in this file.
 export interface CognitiveKernelResult {
     extractionResult: ExtractionResult;
     cognitiveOutput: CognitiveOrchestrationOutput;
+    promptTraceMap?: PromptTraceMap;
 }
-
-// Added for Phase 17B UI Harmonization
-export type PersonaType = 'creator' | 'researcher' | 'educator';
-
-export const ALLOWED_PERSONAS: PersonaType[] = ['creator', 'researcher', 'educator'];
 
 // Placeholder for GenerationConfig type, to be refined with SystemPromptGenerator component details
 export interface GenerationConfig {
     [key: string]: unknown; // Allow arbitrary keys for now
 }
+
+// Added for Phase 17B UI Harmonization
+export type { AbductiveHypothesisOutput, Hypothesis } from '@/server/llm/AbductiveHypothesisAgent';
+
+// Added for Phase 18A UI Scaffolding
+export type { GapDetectionOutput, IdentifiedGap, GapType } from '@/server/llm/GapDetectionAgent';
+
+// Added for Phase 18B UI Scaffolding
+export type { AnalogicalMappingOutput, AnalogicalMapping } from '@/server/llm/AnalogicalMappingAgent';
+
+// Added for Phase 18D UI Scaffolding
+export type { RelevanceFilteringOutput, FilteringLogEntry } from '@/server/llm/RelevanceFilteringAgent';
+
+// Added for Phase 20 Self-Correction Kernel
+export type { AmbiguityScore } from '@/server/llm/AmbiguityDetectorAgent';
