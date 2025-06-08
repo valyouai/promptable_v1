@@ -1,5 +1,18 @@
 import openai from './openai';
-import { ExtractedConcepts } from '@/types';
+import { ExtractedConcepts, TraceableConcept } from '@/types';
+
+/**
+ * Sanitize array contents by filtering invalid values, trimming strings,
+ * and converting them to TraceableConcept objects.
+ */
+function sanitizeAndConvertToTraceableConceptArray(arr: unknown[]): TraceableConcept[] {
+    return arr
+        .filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+        .map(item => ({
+            value: item.trim(),
+            source: "N/A"
+        }));
+}
 
 export async function extractConcepts(text: string): Promise<ExtractedConcepts> {
     const prompt = `Extract key concepts, principles, methods, and frameworks from the following research text.
@@ -16,7 +29,7 @@ export async function extractConcepts(text: string): Promise<ExtractedConcepts> 
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: 'gpt-4o', // Using gpt-4o as it's generally good for structured output
+            model: 'gpt-4o',
             response_format: { type: "json_object" },
             temperature: 0.2,
         });
@@ -28,18 +41,16 @@ export async function extractConcepts(text: string): Promise<ExtractedConcepts> 
 
         const parsedResponse = JSON.parse(rawResponse);
 
-        // Basic validation to ensure the structure matches
         const validatedConcepts: ExtractedConcepts = {
-            principles: Array.isArray(parsedResponse.principles) ? parsedResponse.principles.map(String) : [],
-            methods: Array.isArray(parsedResponse.methods) ? parsedResponse.methods.map(String) : [],
-            frameworks: Array.isArray(parsedResponse.frameworks) ? parsedResponse.frameworks.map(String) : [],
-            theories: Array.isArray(parsedResponse.theories) ? parsedResponse.theories.map(String) : [],
+            principles: Array.isArray(parsedResponse.principles) ? sanitizeAndConvertToTraceableConceptArray(parsedResponse.principles) : [],
+            methods: Array.isArray(parsedResponse.methods) ? sanitizeAndConvertToTraceableConceptArray(parsedResponse.methods) : [],
+            frameworks: Array.isArray(parsedResponse.frameworks) ? sanitizeAndConvertToTraceableConceptArray(parsedResponse.frameworks) : [],
+            theories: Array.isArray(parsedResponse.theories) ? sanitizeAndConvertToTraceableConceptArray(parsedResponse.theories) : [],
         };
 
         return validatedConcepts;
     } catch (error) {
         console.error('Error extracting concepts:', error);
-        // Return empty arrays or re-throw based on desired error handling
         return { principles: [], methods: [], frameworks: [], theories: [] };
     }
 }
