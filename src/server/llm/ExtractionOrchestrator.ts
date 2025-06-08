@@ -21,6 +21,9 @@ import { PromptCompilerEngine } from "./prompt-compiler/PromptCompilerEngine";
 import { VerificationAgentEngine } from "./verification-agent/VerificationAgentEngine";
 import { PromptCompilerInput } from "./prompt-compiler/PromptCompilerTypes";
 import { normalizeToTraceableConcept } from "@/server/llm/utils/TraceableConceptNormalizer";
+import { MultiHopComposerEngine } from "./reasoning-composer/MultiHopComposerEngine";
+import { MultiHopComposerInput, MultiHopComposerOutput } from "./reasoning-composer/MultiHopComposerTypes";
+import { TransferKernelConceptSet } from "@/server/llm/prompt-generator/PromptGeneratorTypes";
 
 // Define output shape for the original extraction part (this was local before, now explicitly named for clarity)
 export class ExtractionOrchestrator {
@@ -200,21 +203,59 @@ export class ExtractionOrchestrator {
         }
         processingLog.push(`Prompt Compiler domain key: ${promptCompilerDomainKey}`);
 
-        // PATCHED SECTION: Normalize personaTransferOutput before using it as conceptSet
         const normalizedConceptSet = {
             personaPrinciples: normalizeToTraceableConcept(personaTransferOutput.personaPrinciples as unknown as string[]),
             personaMethods: normalizeToTraceableConcept(personaTransferOutput.personaMethods as unknown as string[]),
             personaFrameworks: normalizeToTraceableConcept(personaTransferOutput.personaFrameworks as unknown as string[]),
             personaTheories: normalizeToTraceableConcept(personaTransferOutput.personaTheories as unknown as string[]),
         };
+        processingLog.push('Concept set normalized to TraceableConcepts.');
+
+        // --- BEGIN PHASE 23.C Multi-Hop Composer Integration ---
+        processingLog.push('Preparing input for Multi-Hop Reasoning Composer...');
+        const composerInput: MultiHopComposerInput = {
+            conceptSet: normalizedConceptSet,
+            persona: persona,
+            domain: promptCompilerDomainKey,
+        };
+        console.log("--- Multi-Hop Reasoning Composer Input ---", composerInput);
+
+        const multiHopOutput: MultiHopComposerOutput = MultiHopComposerEngine.compose(composerInput);
+        processingLog.push('Multi-Hop Reasoning Composer executed.');
+        console.log("--- Multi-Hop Reasoning Output ---", multiHopOutput);
+
+        // --- BEGIN PHASE 23.D Reasoning Composition Fusion Layer ---
+        let conceptsForCompiler: TransferKernelConceptSet;
+        if (multiHopOutput.composedMappings && multiHopOutput.composedMappings.length > 0) {
+            conceptsForCompiler = {
+                personaPrinciples: [
+                    ...normalizedConceptSet.personaPrinciples,
+                    ...multiHopOutput.composedMappings.map(mapping => ({
+                        value: mapping,
+                        source: "multi-hop-composer"
+                    }))
+                ],
+                personaMethods: normalizedConceptSet.personaMethods,
+                personaFrameworks: normalizedConceptSet.personaFrameworks,
+                personaTheories: normalizedConceptSet.personaTheories,
+            };
+            processingLog.push(`Fusion complete: ${multiHopOutput.composedMappings.length} composedMappings injected into personaPrinciples.`);
+        } else {
+            conceptsForCompiler = normalizedConceptSet; // Use original if no composed mappings
+            processingLog.push('No composedMappings from Multi-Hop Composer; using normalized concepts for prompt compilation.');
+        }
+        console.log("--- Fused Concept Set for Compiler ---", conceptsForCompiler); // ADDED Log for fused set
+        // --- END PHASE 23.D Reasoning Composition Fusion Layer ---
+
+        // --- END PHASE 23.C Multi-Hop Composer Integration (Logic now part of 23.D Fusion) ---
 
         const promptCompilerInput: PromptCompilerInput = {
             persona: persona,
             domain: promptCompilerDomainKey,
-            conceptSet: normalizedConceptSet, // USE NORMALIZED VERSION
+            conceptSet: conceptsForCompiler, // USE FUSED/NORMALIZED SET
             personaProfile: personaProfile
         };
-        processingLog.push('Prompt Compiler input prepared.');
+        processingLog.push('Prompt Compiler input prepared with potentially fused concepts.'); // Updated log
 
         const compiledPrompt = PromptCompilerEngine.compile(promptCompilerInput);
         processingLog.push('Prompt Compiler Engine executed.');
