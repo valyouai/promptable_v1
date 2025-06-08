@@ -6,21 +6,7 @@ import ExtractionProgress from "./ExtractionProgress";
 import ExtractionResultViewer from "./ExtractionResultViewer";
 import SystemPromptGenerator from "./SystemPromptGenerator";
 import KernelErrorBoundary from "./KernelErrorBoundary";
-import type { PersonaType } from "@/types";
-
-export interface ExtractedConcepts {
-  principles: string[];
-  methods: string[];
-  frameworks: string[];
-  theories: string[];
-  notes?: string;
-}
-
-export interface CognitiveKernelResult {
-  extractionResult: {
-    finalConcepts: ExtractedConcepts;
-  };
-}
+import type { PersonaType, CognitiveKernelResult } from "@/types";
 
 interface ExtractionWorkspaceProps {
   persona: PersonaType;

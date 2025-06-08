@@ -1,5 +1,5 @@
 import React from "react";
-import { ExtractedConcepts } from "./ExtractionWorkspace";
+import type { ExtractedConcepts } from "@/types";
 
 interface Props {
   data: ExtractedConcepts;
