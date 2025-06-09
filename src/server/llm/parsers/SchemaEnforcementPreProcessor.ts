@@ -1,3 +1,5 @@
+// import { jsonrepair } from 'jsonrepair'; // Removed unused import
+
 export type SanitizedLLMPartial = {
     principles?: unknown[];
     methods?: unknown[];
@@ -28,81 +30,77 @@ export type SanitizedLLMPartial = {
  * now serving as a final strict verifier that its input is indeed `string[]`.
  */
 export function enforceSchemaCompliance(rawParsed: Record<string, unknown> | null | undefined): SanitizedLLMPartial {
-    console.log("[PATCH CHECK] SchemaEnforcementPreProcessor.enforceSchemaCompliance ACTIVE - vNEW");
-    console.log('[DEBUG] enforceSchemaCompliance received rawParsed:', JSON.stringify(rawParsed));
+    // console.log("[PATCH CHECK] SchemaEnforcementPreProcessor.enforceSchemaCompliance ACTIVE - vNEW"); // Removed
+    // console.log('[DEBUG] enforceSchemaCompliance received rawParsed:', JSON.stringify(rawParsed)); // Removed
     const output: SanitizedLLMPartial = {};
-
-    // KNOWN_CONCEPT_FIELDS from LLMExtractionSanitizer.ts, ensure this list is consistent
-    // For now, using the ones specified in the blueprint.
     const fieldsToProcess: (keyof SanitizedLLMPartial)[] = ["principles", "methods", "frameworks", "theories"];
 
     for (const field of fieldsToProcess) {
         const rawFieldVal = rawParsed?.[field];
-        console.log(`[DEBUG] Processing field: ${field}`, 'rawFieldVal:', rawFieldVal ? JSON.stringify(rawFieldVal).substring(0, 200) + "..." : rawFieldVal);
+        // console.log(`[DEBUG] Processing field: ${field}`, 'rawFieldVal:', ...); // Removed
 
-        let processedArray: unknown[] = []; // Default to empty array
-
+        let processedArray: unknown[] = [];
         if (Array.isArray(rawFieldVal)) {
-            console.log(`[DEBUG] Field ${field} is array. Items detail:`);
-            rawFieldVal.forEach((item: unknown, index: number) => {
-                console.log(`[DEBUG]   Item ${index} for field ${field}: (type: ${typeof item}) (ctor: ${item?.constructor?.name}) | Value: ${String(item).substring(0, 100)}`);
-            });
+            // console.log(`[DEBUG] Field ${field} is array. Items detail:`); // Removed
+            // rawFieldVal.forEach(... console.log(...)); // Removed item detail loop
             processedArray = rawFieldVal.map((item: unknown) => {
                 if (typeof item === "string") {
-                    // If the string is literally "[object Object]", replace it with a defined placeholder.
                     if (item === "[object Object]") {
-                        console.warn(`[SchemaEnforcementPreProcessor] Field item was literal string \"[object Object]\". Replacing.`);
-                        return "[LLM Returned Object String]"; // Specific placeholder
+                        // Keep this specific warning as it indicates direct LLM output of "[object Object]"
+                        console.warn(`[SchemaEnforcementPreProcessor] Field item was literal string "[object Object]". Replacing with placeholder.`);
+                        return "[LLM Returned Object String]";
                     }
-                    return item; // It's a string, but not "[object Object]"
+                    return item;
                 }
-                // Handle null or undefined explicitly first
                 if (item === null || item === undefined) {
-                    return "[No Value]"; // As per new requirement
+                    return "[No Value]";
                 }
-                if (typeof item === "object") { // item is not null here due to the check above
-                    const itemAsRecord = item as Record<string, unknown>; // item is known to be an object
+                if (typeof item === "object") {
+                    const itemAsRecord = item as Record<string, unknown>;
                     if (typeof itemAsRecord.value === "string") return itemAsRecord.value;
                     if (typeof itemAsRecord.name === "string") return itemAsRecord.name;
                     if (typeof itemAsRecord.text === "string") return itemAsRecord.text;
                     if (typeof itemAsRecord.label === "string") return itemAsRecord.label;
                     if (typeof itemAsRecord.description === "string") return itemAsRecord.description;
-
-                    // Guarded stringify for other objects - this is the new fallback for objects
                     try {
                         const jsonStr = JSON.stringify(item);
-                        if (jsonStr === '{}' || jsonStr === '[object Object]') {
-                            console.warn(`[SchemaEnforcementPreProcessor] Field "${field}" item (object) stringified to generic/empty. Original:`, item);
+                        if (jsonStr === '{}') {
+                            // Keep this warn: LLM returned an empty object for an expected string item
+                            console.warn(`[SchemaEnforcementPreProcessor] Field "${field}" contained an empty object {}. Replacing with placeholder.`);
                             return "[Malformed Object Detected]";
                         }
+                        // LLM returned a complex object where a string was expected. Return its stringified JSON.
+                        // This might still be undesirable data for a TraceableConcept.value later on.
+                        console.warn(`[SchemaEnforcementPreProcessor] Field "${field}" contained a complex object. Returning its stringified JSON: ${jsonStr.substring(0, 100)}...`);
                         return jsonStr;
                     } catch (e) {
-                        console.warn(`[SchemaEnforcementPreProcessor] Field "${field}" item (object) failed JSON.stringify. Original:`, item, 'Error:', e);
+                        console.warn(`[SchemaEnforcementPreProcessor] Field "${field}" item (object) failed JSON.stringify. Original: ${String(item).substring(0, 100)}... Error: ${e}`);
                         return "[Unstringifiable Object]";
                     }
                 }
-                // Final fallback for non-string, non-null/undefined, non-object primitives (e.g., numbers, booleans)
+                // This means item is not string, not null/undefined, not object (e.g. number, boolean)
+                // Keep this warn: LLM returned an unexpected primitive type for an expected string item.
+                console.warn(`[SchemaEnforcementPreProcessor] Item in field "${field}" is an unexpected primitive. Type: ${typeof item}. Coercing with String(). Value: ${String(item)}`);
                 return String(item);
             });
         } else {
-            // If the field from rawParsed is not an array (e.g., undefined, null, or other type),
-            // default it to an empty array in the output.
             processedArray = [];
         }
 
-        // Section 4️⃣ Additional Safeguard: Final pass to ensure all items are strings
         output[field] = processedArray.map(val => {
             if (typeof val === "string") {
-                // Also check here if a string somehow became "[object Object]" after initial processing
-                return val === "[object Object]" ? "[Invalid String Value Post-Processing]" : val;
+                // This final check for "[object Object]" should ideally not be hit if above logic is perfect
+                // and other types (numbers, booleans) don't stringify to this.
+                if (val === "[object Object]") {
+                    console.warn(`[SchemaEnforcementPreProcessor] Final Check: Field item was literal string "[object Object]" after coercions. Replacing.`);
+                    return "[Invalid String Value Post-Processing]";
+                }
+                return val;
             }
-            // If, after all processing, an item is still not a string (e.g., an unhandled object type slipped through, 
-            // or a complex scenario not caught by specific object checks or stringify attempts),
-            // this ensures it becomes a defined placeholder string.
-            console.warn(`[SchemaEnforcementPreProcessor] Field "${field}" item was not a string after initial processing. Type: ${typeof val}. Value:`, val);
-            return "[Unrecognized Object: Flattening Failed]"; // User-specified placeholder
+            // This indicates a failure in the mapping above to produce only strings in processedArray
+            console.warn(`[SchemaEnforcementPreProcessor] Final Check: Field "${field}" item was not a string after initial processing. Type: ${typeof val}. Value: ${String(val).substring(0, 100)}...`);
+            return "[Unrecognized Data Type Post-Processing]";
         });
     }
-
     return output;
 } 

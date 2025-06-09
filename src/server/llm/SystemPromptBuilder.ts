@@ -1,12 +1,10 @@
 import type { ExtractedConcepts, PersonaType, GenerationConfig, TraceableConcept } from "@/types";
 
 function sanitizeExtractedConcepts(concepts: ExtractedConcepts): ExtractedConcepts {
-    console.log("[PATCH CHECK] SystemPromptBuilder.sanitizeExtractedConcepts ACTIVE - vNEW");
-    // Helper to sanitize an array of TraceableConcepts by cleaning their .value property
+    // console.log("[PATCH CHECK] SystemPromptBuilder.sanitizeExtractedConcepts ACTIVE - vNEW"); // Removed
     const sanitizeTraceableConceptArray = (arr?: TraceableConcept[]): TraceableConcept[] =>
         (arr || []).map(tc => ({
             ...tc,
-            // Defensively handle cases where tc.value might be undefined or not a string
             value: (typeof tc.value === 'string' ? tc.value.replace(/[\r\n\t]/g, ' ').trim() : '')
         }));
 
@@ -15,7 +13,6 @@ function sanitizeExtractedConcepts(concepts: ExtractedConcepts): ExtractedConcep
         methods: sanitizeTraceableConceptArray(concepts.methods),
         frameworks: sanitizeTraceableConceptArray(concepts.frameworks),
         theories: sanitizeTraceableConceptArray(concepts.theories),
-        // Removed notes as it's not part of ExtractedConcepts type
     };
 }
 
@@ -25,19 +22,17 @@ export function buildSystemPrompt(params: {
     contentType: string;
     generationConfig: GenerationConfig;
 }): string {
-    console.log("[PATCH CHECK] SystemPromptBuilder.buildSystemPrompt ACTIVE - vNEW");
+    // console.log("[PATCH CHECK] SystemPromptBuilder.buildSystemPrompt ACTIVE - vNEW"); // Removed
     const { extractedConcepts, persona, contentType, generationConfig } = params;
     const safeConcepts = sanitizeExtractedConcepts(extractedConcepts);
 
-    // Helper to format an array of TraceableConcepts into a string list of their values
     const formatConceptList = (concepts?: TraceableConcept[]): string => {
-        console.log("[PATCH CHECK] SystemPromptBuilder.formatConceptList ACTIVE - vNEW");
+        // console.log("[PATCH CHECK] SystemPromptBuilder.formatConceptList ACTIVE - vNEW"); // Removed
         if (!concepts || concepts.length === 0) return 'N/A';
         return concepts.map(tc => {
-            // If tc.value is literally "[object Object]", replace it.
-            // This indicates an upstream issue where an object was improperly stringified into a value.
             if (tc.value === "[object Object]") {
-                console.warn(`[SystemPromptBuilder] formatConceptList: Found TraceableConcept.value as literal string "[object Object]". Replacing. Original tc: ${JSON.stringify(tc)}`);
+                // Keep this warn: it means a TraceableConcept.value was exactly "[object Object]" when it reached here.
+                console.warn(`[SystemPromptBuilder] formatConceptList: Found TraceableConcept.value as literal string "[object Object]". Replacing with placeholder.`);
                 return "[Data Error: Object Stringified]";
             }
             return tc.value;
@@ -50,7 +45,6 @@ export function buildSystemPrompt(params: {
     prompt += `Methods: ${formatConceptList(safeConcepts.methods)}\n`;
     prompt += `Frameworks: ${formatConceptList(safeConcepts.frameworks)}\n`;
     prompt += `Theories: ${formatConceptList(safeConcepts.theories)}\n`;
-    // Removed notes handling as it's not part of safeConcepts after sanitization
 
     if (Object.keys(generationConfig).length > 0) {
         prompt += `\nGeneration configuration provided: ${JSON.stringify(generationConfig)}. Incorporate these settings into the prompt as appropriate.`;
