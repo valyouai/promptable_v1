@@ -25,22 +25,12 @@ export class ExtractionQAAgent {
                 confidenceScore -= 0.1;
             }
         }
-        // Handle 'notes' specifically. 
-        // The original condition `DOMAIN_SCHEMA.fields.indexOf('notes' as any) === -1` is always true 
-        // because 'notes' is not in DOMAIN_SCHEMA.fields. So, we only need to check if concepts.notes is undefined.
-        if (concepts.notes === undefined) {
-            // If notes is a defined part of ExtractedConcepts type, ensure it is initialized if missing.
-            // Depending on strictness, this could be an empty string or just a log.
-            // For now, if ExtractedConcepts expects notes: string (even if optional), ensure it's not undefined causing downstream issues.
-            // concepts.notes = ""; // Example: initialize to empty string. For Phase 13A, let Orchestrator handle final notes default.
-            // issues.push('QA Warning: "notes" field was undefined. Initialized to empty for consistency if expected by type.');
-            // confidenceScore -= 0.01; // Very minor penalty for undefined optional field
-        }
 
-        const allConceptsArrays = DOMAIN_SCHEMA.fields.reduce((acc, field) => {
-            const conceptArray = concepts[field];
+        const allConceptsArrays: string[] = DOMAIN_SCHEMA.fields.reduce((acc, field) => {
+            const conceptArray = concepts[field as keyof ExtractedConcepts]; // This is TraceableConcept[]
             if (Array.isArray(conceptArray)) {
-                acc.push(...conceptArray);
+                // Map TraceableConcepts to their string values before pushing
+                acc.push(...conceptArray.map(tc => tc.value));
             }
             return acc;
         }, [] as string[]);
@@ -51,8 +41,8 @@ export class ExtractionQAAgent {
         }
 
         for (const categoryName in concepts) {
-            // Schema Anchoring: Check if the categoryName is a valid field as per DomainSchema or a known field like 'notes'
-            if (!DOMAIN_SCHEMA.isValidField(categoryName) && categoryName !== 'notes') {
+            // Schema Anchoring: Check if the categoryName is a valid field as per DomainSchema
+            if (!DOMAIN_SCHEMA.isValidField(categoryName)) {
                 issues.push(`QA Issue: Unknown category "${categoryName}" found in extracted concepts. Not defined in DomainSchema.`);
                 isValid = false;
                 confidenceScore -= 0.15;
@@ -69,25 +59,27 @@ export class ExtractionQAAgent {
                     isValid = false;
                     confidenceScore -= 0.15;
                 }
-                for (const concept of categoryConcepts) {
-                    if (typeof concept !== 'string') {
-                        issues.push(`QA Issue: Invalid non-string concept found in "${categoryName}".`);
+                for (const concept of categoryConcepts) { // concept is a TraceableConcept
+                    // Validate the structure of concept if necessary, but primary operations should be on concept.value
+                    if (typeof concept.value !== 'string') { // Check concept.value type
+                        issues.push(`QA Issue: Invalid or missing concept value in "${categoryName}". Concept: ${JSON.stringify(concept)}`);
                         isValid = false;
                         confidenceScore -= 0.1;
                         continue;
                     }
-                    if (concept.length < MIN_CONCEPT_LENGTH) {
-                        issues.push(`QA Warning: Concept "${concept.substring(0, 30)}..." in "${categoryName}" is very short (length ${concept.length}).`);
-                        // This could be a minor issue, might not set isValid to false but lowers confidence
+                    const conceptValue = concept.value; // Work with concept.value
+
+                    if (conceptValue.length < MIN_CONCEPT_LENGTH) {
+                        issues.push(`QA Warning: Concept "${conceptValue.substring(0, 30)}..." in "${categoryName}" is very short (length ${conceptValue.length}).`);
                         confidenceScore -= 0.05;
                     }
-                    if (concept.length > MAX_CONCEPT_LENGTH) {
-                        issues.push(`QA Warning: Concept "${concept.substring(0, 30)}..." in "${categoryName}" is very long (length ${concept.length}).`);
+                    if (conceptValue.length > MAX_CONCEPT_LENGTH) {
+                        issues.push(`QA Warning: Concept "${conceptValue.substring(0, 30)}..." in "${categoryName}" is very long (length ${conceptValue.length}).`);
                         confidenceScore -= 0.05;
                     }
                     // Check for placeholder-like or repetitive content (basic check)
-                    if (/^(placeholder|example|test|mock|dummy)/i.test(concept) || concept === documentText.substring(0, concept.length)) {
-                        issues.push(`QA Warning: Concept "${concept.substring(0, 30)}..." in "${categoryName}" seems like a placeholder or directly copied snippet.`);
+                    if (/^(placeholder|example|test|mock|dummy)/i.test(conceptValue) || conceptValue === documentText.substring(0, conceptValue.length)) {
+                        issues.push(`QA Warning: Concept "${conceptValue.substring(0, 30)}..." in "${categoryName}" seems like a placeholder or directly copied snippet.`);
                         confidenceScore -= 0.1;
                     }
                 }

@@ -6,7 +6,7 @@
  * not covered by schema mapping, such as punctuation, casing, etc.
  */
 
-import type { ExtractedConcepts } from "@/types"; // Might be useful later for strict typing
+import type { ExtractedConcepts, TraceableConcept } from "@/types"; // Might be useful later for strict typing
 
 // Alias map: maps various key phrasings (lowercase, spaces for separators) to canonical keys.
 const ALIAS_MAP: Record<string, string> = {
@@ -86,15 +86,32 @@ export class PatternNormalizer {
     }
 
     private static _processAndAddValueToCanonicalArray(
-        value: unknown,
+        inputValue: unknown,
         targetCanonicalKey: string,
         collectedArrays: Record<string, string[]>
     ) {
-        if (value === null || value === undefined) {
+        if (inputValue === null || inputValue === undefined) {
             return;
         }
 
-        const originalStrValue = String(value).trim();
+        let conceptStringValue: string;
+
+        // Since ExtractorAgent now produces TraceableConcept[], inputValue should be a TraceableConcept.
+        // Safely check and extract the .value property.
+        if (
+            typeof inputValue === 'object' &&
+            inputValue !== null &&
+            Object.prototype.hasOwnProperty.call(inputValue, 'value') &&
+            typeof (inputValue as TraceableConcept).value === 'string' // Explicitly cast to TraceableConcept here for the check
+        ) {
+            conceptStringValue = (inputValue as TraceableConcept).value; // And here for access
+        } else {
+            // This block should ideally not be hit if ExtractorAgent output is consistently TraceableConcept[].
+            console.warn(`[PatternNormalizer] _processAndAddValueToCanonicalArray: CRITICAL - inputValue was NOT a valid TraceableConcept. Type: ${typeof inputValue}. Forcing String() coercion. Input: ${JSON.stringify(inputValue).substring(0, 100)}`);
+            conceptStringValue = String(inputValue);
+        }
+
+        const originalStrValue = conceptStringValue.trim();
 
         if (originalStrValue.length === 0) {
             return;
@@ -167,6 +184,9 @@ export class PatternNormalizer {
             } else if (mappedCanonicalKey === 'notes' || (!mappedCanonicalKey && lookupKey === 'notes')) {
                 // Handle 'notes' field, whether it was aliased or direct.
                 // This assumes ALIAS_MAP *could* map to 'notes'.
+                // Current ExtractedConcepts does not have 'notes', so this logic is effectively dead
+                // or would require 'notes' to be added back to ExtractedConcepts type.
+                // For now, leaving the internal notesValue logic but it won't be assigned to result unless type changes.
                 if (value !== null && value !== undefined) {
                     const strValue = String(value).trim();
                     if (strValue.length > 0 && !EMPTY_VALUE_MARKERS.includes(strValue.toLowerCase())) {
@@ -174,35 +194,30 @@ export class PatternNormalizer {
                             notesValue = strValue;
                         } else {
                             notesValue += `\\n${strValue}`;
-                            // console.warn(`[PatternNormalizer] Multiple values for 'notes'. Concatenating.`);
                         }
                     }
                 }
             }
-            else {
-                // Neither an alias for a canonical array key, nor a direct canonical array key, nor 'notes'.
-                // Carry over with original key.
-                result[originalKey] = value;
-            }
+            // else {
+            //     // Neither an alias for a canonical array key, nor a direct canonical array key, nor 'notes'.
+            //     // Carry over with original key. - THIS IS REMOVED as result is Partial<ExtractedConcepts>
+            //     // result[originalKey] = value; 
+            // }
         }
 
         for (const key of CANONICAL_ARRAY_KEYS) {
-            result[key] = Array.from(new Set(collectedArrays[key]));
+            // key is of type string here, but CANONICAL_ARRAY_KEYS ensures it's a valid key of ExtractedConcepts
+            const validKey = key as keyof ExtractedConcepts;
+            result[validKey] = (collectedArrays[key] || []).map(s => ({
+                value: s,
+                source: "PatternNormalizer",
+                // score: 1.0 // Optional: Add a default score if appropriate for TraceableConcepts from PatternNormalizer
+            } as TraceableConcept));
         }
 
-        if (notesValue !== undefined) {
-            result['notes'] = notesValue;
-        }
+        // notesValue logic is kept for internal processing but not assigned to result
+        // as 'notes' is not part of the strict ExtractedConcepts type we are returning.
 
-        // If 'notes' was in rawData but not processed into notesValue (e.g. it was null or empty marker string)
-        // and also not carried over by the 'else' clause (e.g. because its key was 'notes' but value was null),
-        // we need to ensure it's not accidentally resurrected if ExtractedConcepts expects notes?:string (undefined is fine).
-        // The current logic: if rawData.notes = null, it's skipped for notesValue. If key is 'notes', the 'else' block
-        // for 'other keys' is also skipped. So result.notes would be undefined, which is fine.
-        // If rawData.notes = "some note", it goes into notesValue.
-        // If rawData.confidence_score = 0.95, it goes into result via the 'else' block.
-
-        // console.log('[PatternNormalizer] Output normalizedData:', JSON.parse(JSON.stringify(result)));
-        return result as ExtractedConcepts; // Cast to ExtractedConcepts as the logic ensures it
+        return result as ExtractedConcepts;
     }
 } 

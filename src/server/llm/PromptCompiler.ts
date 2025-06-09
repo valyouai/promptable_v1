@@ -1,4 +1,4 @@
-import type { ExtractedConcepts } from '@/types'; // For type safety later, if needed
+import { ExtractedConcepts, TraceableConcept } from "@/types"; // PersonaType was already removed, ensure other imports are needed.
 
 // const CANONICAL_KEYS: (keyof ExtractedConcepts)[] = ["principles", "methods", "frameworks", "theories", "notes"]; // Removed as it was unused
 
@@ -11,11 +11,11 @@ export class PromptCompilerV1 {
      */
     public static getExtractionSystemPrompt(): string {
         const schemaExample: ExtractedConcepts = {
-            principles: ["Example Principle 1", "Example Principle 2"],
-            methods: ["Example Method A", "Example Method B"],
-            frameworks: ["Example Framework X", "Example Framework Y"],
-            theories: ["Example Theory Alpha", "Example Theory Beta"],
-            notes: "Optional brief summary or context if applicable. If no specific notes, this field can be omitted or set to an empty string."
+            principles: ["Example Principle 1", "Example Principle 2"].map(s => ({ value: s, source: "SchemaExample" } as TraceableConcept)),
+            methods: ["Example Method A", "Example Method B"].map(s => ({ value: s, source: "SchemaExample" } as TraceableConcept)),
+            frameworks: ["Example Framework X", "Example Framework Y"].map(s => ({ value: s, source: "SchemaExample" } as TraceableConcept)),
+            theories: ["Example Theory Alpha", "Example Theory Beta"].map(s => ({ value: s, source: "SchemaExample" } as TraceableConcept)),
+            // notes: "Optional brief summary or context if applicable..." // Removed notes field
         };
 
         const prompt = `

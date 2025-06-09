@@ -1,6 +1,6 @@
 import type { AmbiguityScore } from './AmbiguityDetectorAgent';
 import type { DependencyInsight } from './DependencyModel';
-import type { ExtractedConcepts } from '@/types';
+import type { ExtractedConcepts, TraceableConcept } from '@/types';
 import { DOMAIN_SCHEMA, type DomainField } from './DomainSchema';
 
 // Added type definitions as per Phase 13B Plan
@@ -85,12 +85,12 @@ export class ConfidenceFusionEngine {
             const relatedDependencies = dependencyInsights?.[fieldKey] || [];
 
             // Safecast concepts to a string-indexed map for robust lookup in filter
-            const conceptsMap: Record<string, string[] | undefined> = {};
+            const conceptsMap: Record<string, TraceableConcept[] | undefined> = {};
             for (const key in concepts) {
                 if (Object.prototype.hasOwnProperty.call(concepts, key) && DOMAIN_SCHEMA.isValidField(key)) {
                     const conceptValue = concepts[key as DomainField];
                     if (Array.isArray(conceptValue)) {
-                        conceptsMap[key] = conceptValue as string[] | undefined;
+                        conceptsMap[key] = conceptValue;
                     }
                 }
             }

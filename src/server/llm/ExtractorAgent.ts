@@ -6,6 +6,7 @@ import { LLMExtractionSanitizer, SanitizedLLMOutput, stripMarkdownWrappers } fro
 
 export class ExtractorAgent {
     public static async extract(chunkText: string): Promise<ExtractedConcepts> {
+        console.log("[PATCH CHECK] ExtractorAgent.extract ACTIVE - vNEW");
         // 4.a Combine the chunks into full document text
         // const documentText = chunks.join(" "); // Removed this line
 
@@ -44,6 +45,7 @@ Only use values mentioned in the text. Return all outputs as string arrays. If a
         // 4.d Parse output (use repair fallback)
         let parsed: SanitizedLLMOutput;
         const responseContent = (response as { content: string }).content;
+        console.log('[DEBUG] Raw LLM response for ExtractorAgent:', responseContent ? responseContent.substring(0, 500) + "... (truncated if long)" : responseContent);
 
         if (typeof responseContent === 'string' && responseContent.trim() !== '') {
             const cleanedContent = stripMarkdownWrappers(responseContent);
@@ -76,6 +78,7 @@ Only use values mentioned in the text. Return all outputs as string arrays. If a
 
         // AGGRESSIVE FINAL STRING CLEANUP before creating TraceableConcepts
         const finalClean = (s: string): string => {
+            console.log("[PATCH CHECK] ExtractorAgent.finalClean ACTIVE - vNEW");
             if (s === "[object Object]") {
                 console.warn(`[ExtractorAgent] Aggressively replacing literal string "[object Object]" before TraceableConcept creation.`);
                 return "[Invalid Extracted String]";

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 interface DebugDataInspectorProps {
   label: string;
-  data: any;
+  data: unknown;
 }
 
 const DebugDataInspector: React.FC<DebugDataInspectorProps> = ({ label, data }) => {

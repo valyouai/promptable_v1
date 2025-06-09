@@ -1,8 +1,7 @@
 import { ExtractedConcepts } from '@/types';
 import { DocumentContext } from './PromptCompiler';
 import { PromptCompiler } from './PromptCompiler';
-import { AmbiguityCatcher } from './AmbiguityCatcher';
-import { MultiPassRefinementAgent } from './MultiPassRefinementAgent';
+import { AmbiguityDetectorAgent, type AmbiguityScore } from '@/server/llm/AmbiguityDetectorAgent';
 import { ExtractionQAAgent } from '@/lib/extraction/ExtractionQAAgent';
 import { LLMAdapterRouter } from '@/server/llm/LLMAdapterRouter';
 import { SchemaActivator } from './SchemaActivator';
@@ -22,11 +21,13 @@ export class ExtractionEngine {
 
         const schemaAligned = SchemaActivator.activate(persona, normalized);
 
-        const ambiguities = AmbiguityCatcher.detectAmbiguities(schemaAligned);
-        console.log('[AmbiguityCatcher] Soft warnings:', ambiguities);
+        const ambiguities: AmbiguityScore[] = AmbiguityDetectorAgent.detectAmbiguities(schemaAligned);
+        console.log('[AmbiguityDetectorAgent] Ambiguity scores:', ambiguities);
 
-        const reinforcedConcepts = await MultiPassRefinementAgent.reinforce(documentText, schemaAligned);
-        const qaResult = await ExtractionQAAgent.validate(documentText, reinforcedConcepts);
+        // const reinforcedConcepts = await MultiPassRefinementAgent.reinforce(documentText, schemaAligned); // ENSURE THIS LINE IS COMMENTED
+        const reinforcedConcepts = schemaAligned; // TEMP: Using schemaAligned directly
+
+        const qaResult = await ExtractionQAAgent.validate(documentText, reinforcedConcepts); // Pass schemaAligned (now as reinforcedConcepts)
         return qaResult.validatedConcepts;
     }
 

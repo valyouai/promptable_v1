@@ -1,4 +1,4 @@
-import type { ExtractedConcepts } from '@/types'; // Assuming ExtractedConcepts type is available
+import type { ExtractedConcepts, TraceableConcept } from '@/types'; // Added TraceableConcept
 
 export interface AmbiguityScore {
     field: keyof ExtractedConcepts;
@@ -27,17 +27,10 @@ export class AmbiguityDetectorAgent {
      */
     public static detectAmbiguities(concepts: ExtractedConcepts): AmbiguityScore[] {
         const scores: AmbiguityScore[] = [];
-        const conceptKeys: (keyof ExtractedConcepts)[] = ["principles", "methods", "frameworks", "theories", "notes"];
+        const conceptKeys: (keyof ExtractedConcepts)[] = ["principles", "methods", "frameworks", "theories"];
 
         for (const key of conceptKeys) {
-            let result: AmbiguityCheckResult;
-            const value = concepts[key];
-
-            if (key === "notes") {
-                result = this.isNotesAmbiguous(value as string | undefined);
-            } else {
-                result = this.isFieldAmbiguous(value as string[] | undefined);
-            }
+            const result: AmbiguityCheckResult = this.isFieldAmbiguous(concepts[key]);
 
             if (result.isAmbiguous) {
                 scores.push({
@@ -55,61 +48,40 @@ export class AmbiguityDetectorAgent {
     }
 
     /**
-     * Helper function to determine if a field (array of strings) is ambiguous.
+     * Helper function to determine if a field (array of strings or TraceableConcepts) is ambiguous.
+     * Updated to expect TraceableConcept[] as per ExtractedConcepts type.
      */
-    private static isFieldAmbiguous(fieldValue: string[] | undefined): AmbiguityCheckResult {
+    private static isFieldAmbiguous(fieldValue: TraceableConcept[] | undefined): AmbiguityCheckResult {
         if (!fieldValue || fieldValue.length === 0) {
             return { isAmbiguous: true, score: 1.0, reasoning: "Field empty" };
         }
 
-        // New logic: iterate through each item in the array
         let hedgingFoundInAnyItem = false;
         let allItemsClearSummary = "All items appear clear. Items: ";
 
-        for (const item of fieldValue) {
-            const lowerItem = item.toLowerCase();
+        for (const concept of fieldValue) {
+            const lowerItem = concept.value.toLowerCase();
             const hasHedging = AMBIGUITY_MARKERS.some(marker => lowerItem.includes(marker));
             if (hasHedging) {
                 hedgingFoundInAnyItem = true;
-                // Provide more specific reasoning if needed, e.g., which item and marker
-                // For now, a general reasoning for the field is fine.
-                break; // Found hedging, no need to check further for this field
+                break;
             }
-            allItemsClearSummary += `'${item.substring(0, 20)}...' `;
+            allItemsClearSummary += `'${concept.value.substring(0, 20)}...' `;
         }
 
         if (hedgingFoundInAnyItem) {
             return {
                 isAmbiguous: true,
-                score: 0.6, // Adjusted score for hedging in one of potentially multiple items
+                score: 0.6,
                 reasoning: "Hedging phrase detected in at least one value within the field array."
             };
         }
 
-        // If loop completes and no hedging found in any item
         return {
             isAmbiguous: false,
             score: 0.0,
             reasoning: fieldValue.length === 1 ? "Single clear value present" : `Multiple clear values present. ${allItemsClearSummary.trim()}`
         };
-    }
-
-    /**
-     * Helper function to determine if the notes field (string) is ambiguous.
-     */
-    private static isNotesAmbiguous(notesValue: string | undefined): AmbiguityCheckResult {
-        if (!notesValue || notesValue.trim().length === 0) {
-            return { isAmbiguous: true, score: 1.0, reasoning: "Field empty" };
-        }
-
-        const lowerNotes = notesValue.toLowerCase();
-        const hasHedging = AMBIGUITY_MARKERS.some(marker => lowerNotes.includes(marker));
-
-        if (hasHedging) {
-            return { isAmbiguous: true, score: 0.75, reasoning: "Hedging phrase detected" };
-        }
-
-        return { isAmbiguous: false, score: 0.0, reasoning: "Clear value present" };
     }
 }
 

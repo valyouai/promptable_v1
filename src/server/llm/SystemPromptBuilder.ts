@@ -1,6 +1,7 @@
 import type { ExtractedConcepts, PersonaType, GenerationConfig, TraceableConcept } from "@/types";
 
 function sanitizeExtractedConcepts(concepts: ExtractedConcepts): ExtractedConcepts {
+    console.log("[PATCH CHECK] SystemPromptBuilder.sanitizeExtractedConcepts ACTIVE - vNEW");
     // Helper to sanitize an array of TraceableConcepts by cleaning their .value property
     const sanitizeTraceableConceptArray = (arr?: TraceableConcept[]): TraceableConcept[] =>
         (arr || []).map(tc => ({
@@ -24,11 +25,13 @@ export function buildSystemPrompt(params: {
     contentType: string;
     generationConfig: GenerationConfig;
 }): string {
+    console.log("[PATCH CHECK] SystemPromptBuilder.buildSystemPrompt ACTIVE - vNEW");
     const { extractedConcepts, persona, contentType, generationConfig } = params;
     const safeConcepts = sanitizeExtractedConcepts(extractedConcepts);
 
     // Helper to format an array of TraceableConcepts into a string list of their values
     const formatConceptList = (concepts?: TraceableConcept[]): string => {
+        console.log("[PATCH CHECK] SystemPromptBuilder.formatConceptList ACTIVE - vNEW");
         if (!concepts || concepts.length === 0) return 'N/A';
         return concepts.map(tc => {
             // If tc.value is literally "[object Object]", replace it.

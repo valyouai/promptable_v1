@@ -101,40 +101,41 @@ export class DeepSeekAdapter {
                 throw new Error('No content string returned from DeepSeek after parsing.');
             }
 
-            // --- Phase 24 Contract Enforcement --- 
-            // Ensure markdown wrappers are stripped and then JSON is repaired before attempting final JSON parse
-            const cleanedContentString = stripMarkdownWrappers(messageContentString as string);
-
-            let parsedContentForVerification: unknown;
-            try {
-                // Attempt to repair the cleaned string first
-                const repairedContentString = jsonrepair(cleanedContentString);
-                parsedContentForVerification = JSON.parse(repairedContentString);
-            } catch (contentParseError: unknown) {
-                console.error("[DeepSeekAdapter] Failed to parse or repair the message content string as JSON. Content string:", cleanedContentString, "Parse error:", contentParseError);
-                // This means the LLM returned a 'content' that isn't a valid JSON string, violating the contract at a basic level.
-                throw new Error(`DeepSeekAdapter Contract Violation: LLM message content is not a valid JSON string. Error: ${contentParseError instanceof Error ? contentParseError.message : String(contentParseError)}`);
-            }
-
-            try {
-                LLMOutputContractManager.verifyExtractionPayload(parsedContentForVerification);
-                // If verify passes, it means messageContentString is a string that represents a valid ExtractionContract.
-                // The adapter's contract is to return { content: string }, so we return the original messageContentString.
-                console.log("[DeepSeekAdapter] Phase 24 Contract Verification Successful for LLM output (via Manager).");
-            } catch (verificationError: unknown) {
-                console.error("[DeepSeekAdapter] [Phase 24 Contract Failure] LLM output failed schema verification (via Manager).",
-                    "Content string:", messageContentString,
-                    "Verification error:", verificationError);
-                // Re-throw the specific verification error. It will be caught by the outer catch block.
-                if (verificationError instanceof Error) {
-                    throw new Error(`Phase 24 Contract Failure: ${verificationError.message}`);
+            // If the request specifically asked for JSON object (like in ExtractorAgent)
+            if (params.response_format?.type === "json_object") {
+                // --- Phase 24 Contract Enforcement --- 
+                const cleanedContentString = stripMarkdownWrappers(messageContentString as string);
+                let parsedContentForVerification: unknown;
+                try {
+                    const repairedContentString = jsonrepair(cleanedContentString);
+                    parsedContentForVerification = JSON.parse(repairedContentString);
+                } catch (contentParseError: unknown) {
+                    console.error("[DeepSeekAdapter] Failed to parse or repair the message content string as JSON. Content string:", cleanedContentString, "Parse error:", contentParseError);
+                    throw new Error(`DeepSeekAdapter Contract Violation: LLM message content is not a valid JSON string. Error: ${contentParseError instanceof Error ? contentParseError.message : String(contentParseError)}`);
                 }
-                throw new Error(`Phase 24 Contract Failure: An unknown verification error occurred.`);
-            }
-            // --- End Phase 24 Contract Enforcement ---
 
-            // If verification passed, return the original content string that was successfully parsed and verified.
-            return { content: messageContentString };
+                try {
+                    LLMOutputContractManager.verifyExtractionPayload(parsedContentForVerification);
+                    console.log("[DeepSeekAdapter] Phase 24 Contract Verification Successful for LLM output (via Manager).");
+                } catch (verificationError: unknown) {
+                    console.error("[DeepSeekAdapter] [Phase 24 Contract Failure] LLM output failed schema verification (via Manager).",
+                        "Content string:", messageContentString,
+                        "Verification error:", verificationError);
+                    if (verificationError instanceof Error) {
+                        throw new Error(`Phase 24 Contract Failure: ${verificationError.message}`);
+                    }
+                    throw new Error(`Phase 24 Contract Failure: An unknown verification error occurred.`);
+                }
+                // For JSON object tasks, we return the original string that was verified to be parseable and contract compliant.
+                return { content: messageContentString };
+            } else {
+                // For other tasks (like system prompt generation that likely expects/returns plain text),
+                // bypass JSON parsing and verification of the LLM's direct message content.
+                console.log("[DeepSeekAdapter] Task response_format not 'json_object'. Returning raw content string.");
+                return { content: messageContentString };
+            }
+            // --- End Phase 24 Contract Enforcement (now conditional) ---
+            // Original return { content: messageContentString } moved into the conditional blocks
 
         } catch (error: unknown) {
             // Unified error handling

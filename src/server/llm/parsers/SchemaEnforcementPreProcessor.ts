@@ -28,6 +28,8 @@ export type SanitizedLLMPartial = {
  * now serving as a final strict verifier that its input is indeed `string[]`.
  */
 export function enforceSchemaCompliance(rawParsed: Record<string, unknown> | null | undefined): SanitizedLLMPartial {
+    console.log("[PATCH CHECK] SchemaEnforcementPreProcessor.enforceSchemaCompliance ACTIVE - vNEW");
+    console.log('[DEBUG] enforceSchemaCompliance received rawParsed:', JSON.stringify(rawParsed));
     const output: SanitizedLLMPartial = {};
 
     // KNOWN_CONCEPT_FIELDS from LLMExtractionSanitizer.ts, ensure this list is consistent
@@ -36,10 +38,15 @@ export function enforceSchemaCompliance(rawParsed: Record<string, unknown> | nul
 
     for (const field of fieldsToProcess) {
         const rawFieldVal = rawParsed?.[field];
+        console.log(`[DEBUG] Processing field: ${field}`, 'rawFieldVal:', rawFieldVal ? JSON.stringify(rawFieldVal).substring(0, 200) + "..." : rawFieldVal);
 
         let processedArray: unknown[] = []; // Default to empty array
 
         if (Array.isArray(rawFieldVal)) {
+            console.log(`[DEBUG] Field ${field} is array. Items detail:`);
+            rawFieldVal.forEach((item: unknown, index: number) => {
+                console.log(`[DEBUG]   Item ${index} for field ${field}: (type: ${typeof item}) (ctor: ${item?.constructor?.name}) | Value: ${String(item).substring(0, 100)}`);
+            });
             processedArray = rawFieldVal.map((item: unknown) => {
                 if (typeof item === "string") {
                     // If the string is literally "[object Object]", replace it with a defined placeholder.

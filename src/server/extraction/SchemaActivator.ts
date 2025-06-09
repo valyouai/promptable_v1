@@ -1,6 +1,6 @@
 // src/server/extraction/SchemaActivator.ts
 
-import { ExtractedConcepts } from '@/types';
+import { ExtractedConcepts, TraceableConcept } from '@/types';
 
 /**
  * Phase 4 - Schema Activator
@@ -24,23 +24,44 @@ export class SchemaActivator {
     }
 
     private static creatorSchema(normalized: Record<string, unknown>): ExtractedConcepts {
+        const mapToStringArrayToTraceableConceptArray = (key: string): TraceableConcept[] => {
+            const stringArray = this.getStringArray(normalized, key);
+            return stringArray.map(s => ({ value: s, source: "SchemaActivator" } as TraceableConcept));
+        };
         return {
-            principles: this.getStringArray(normalized, 'principles'),
-            methods: this.getStringArray(normalized, 'methods'),
-            frameworks: this.getStringArray(normalized, 'frameworks'),
-            theories: this.getStringArray(normalized, 'theories'),
-            // Other optional fields from ExtractedConcepts will be undefined if not present in normalized, which is fine.
+            principles: mapToStringArrayToTraceableConceptArray('principles'),
+            methods: mapToStringArrayToTraceableConceptArray('methods'),
+            frameworks: mapToStringArrayToTraceableConceptArray('frameworks'),
+            theories: mapToStringArrayToTraceableConceptArray('theories'),
         };
     }
 
     private static researcherSchema(normalized: Record<string, unknown>): ExtractedConcepts {
-        // ⚠ Initial placeholder schema logic — will fully customize later
-        return normalized as ExtractedConcepts;
+        // TEMP: Applying same logic as creatorSchema. Will need persona-specific logic later.
+        const mapToStringArrayToTraceableConceptArray = (key: string): TraceableConcept[] => {
+            const stringArray = this.getStringArray(normalized, key);
+            return stringArray.map(s => ({ value: s, source: "SchemaActivator" } as TraceableConcept));
+        };
+        return {
+            principles: mapToStringArrayToTraceableConceptArray('principles'),
+            methods: mapToStringArrayToTraceableConceptArray('methods'),
+            frameworks: mapToStringArrayToTraceableConceptArray('frameworks'),
+            theories: mapToStringArrayToTraceableConceptArray('theories'),
+        };
     }
 
     private static educatorSchema(normalized: Record<string, unknown>): ExtractedConcepts {
-        // ⚠ Initial placeholder schema logic — will fully customize later
-        return normalized as ExtractedConcepts;
+        // TEMP: Applying same logic as creatorSchema. Will need persona-specific logic later.
+        const mapToStringArrayToTraceableConceptArray = (key: string): TraceableConcept[] => {
+            const stringArray = this.getStringArray(normalized, key);
+            return stringArray.map(s => ({ value: s, source: "SchemaActivator" } as TraceableConcept));
+        };
+        return {
+            principles: mapToStringArrayToTraceableConceptArray('principles'),
+            methods: mapToStringArrayToTraceableConceptArray('methods'),
+            frameworks: mapToStringArrayToTraceableConceptArray('frameworks'),
+            theories: mapToStringArrayToTraceableConceptArray('theories'),
+        };
     }
 
     // 🔧 Hardened extractor helper (reusable for all personas)

@@ -1,34 +1,30 @@
-import type { ExtractedConcepts } from "@/types";
+import { ExtractedConcepts, TraceableConcept } from "@/types";
 
-export const ambiguityDetectionFixtures: Record<string, ExtractedConcepts> = {
+export const ambiguityDetectionFixtures = {
     fixture1_emptyPrinciples: {
         principles: [],
-        methods: ["Method A", "Method B"],
-        frameworks: ["Framework X"],
-        theories: ["Theory Y"],
-        notes: "All fields present, but principles is empty."
-    },
-    fixture2_missingMethods: {
-        principles: ["Principle 1"],
-        // methods field is completely missing
-        frameworks: ["Framework Z"],
-        theories: ["Theory Alpha"],
-        notes: "Methods field is deliberately omitted."
-    } as unknown as ExtractedConcepts, // Cast needed because 'methods' is missing from literal
-    fixture3_placeholderInFrameworks: {
-        principles: ["Principle 2"],
-        methods: ["Method C"],
-        frameworks: ["Placeholder for framework details"],
-        theories: ["Theory Beta"],
-        notes: "Frameworks contains a placeholder string."
-    },
-    fixture4_uncertaintyInTheories: {
-        principles: ["Principle 3"],
-        methods: ["Method D", "Method E"],
-        frameworks: ["Framework Gamma"],
-        theories: ["possibly Theory Delta", "could be Theory Epsilon"],
-        notes: "Theories array contains strings with uncertainty phrases."
-    },
+        methods: ["Method A", "Method B"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Framework X"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Theory Y"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    } as ExtractedConcepts,
+    fixture2_allClear: {
+        principles: ["Clear Principle"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Clear Method"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Clear Framework"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Clear Theory"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    } as ExtractedConcepts,
+    fixture3_hedgingInPrinciplesAndNotes: {
+        principles: ["Possibly Principle 1", "Principle 2"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Method X"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Framework Y"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Theory Z"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    } as ExtractedConcepts,
+    fixture4_notesEmptyAndMethodsAmbiguous: {
+        principles: ["Solid Principle"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Maybe Method Alpha", "Method Beta"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Framework Gamma"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Theory Delta"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    } as ExtractedConcepts,
     fixture5_llmHedgingInNotes: {
         principles: ["Principle 4"],
         methods: ["Method F"],

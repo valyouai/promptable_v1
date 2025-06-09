@@ -4,38 +4,50 @@
  * and (successfully repaired) MockLLMResponses.
  */
 
-import { ExtractedConcepts } from '@/types'; // Assuming ExtractedConcepts is your target type
+import { ExtractedConcepts, TraceableConcept } from '@/types'; // Assuming ExtractedConcepts is your target type
 
 export const expectedExtractionResults: Record<string, ExtractedConcepts> = {
+    fixture1_initial: {
+        principles: ["Initial Principle"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Initial Method"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: [],
+        theories: ["Initial Theory"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    },
+    fixture1_rawExtracted: {
+        principles: ["Photosynthesis"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Controlled Experiment"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: [].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Plant Physiology"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    },
     pdfSample001: {
-        // Expected result for mockPdfSamples.sample1, assuming all fields are extracted correctly from its single chunk
-        "Research Objective": "To investigate the impact of sunlight on plant growth.",
-        "Methods": "Experimental setup with controlled variables.",
-        "Dataset(s)": "50 potted plants of the same species.",
-        "Key Findings": "Plants exposed to more sunlight showed increased growth.",
-        "Limitations": "Study conducted in a single greenhouse, limiting generalizability.",
-        "Future Work": "Investigate other environmental factors.",
-        "Applications": "Horticulture, agriculture.",
-        "principles": ["Photosynthesis"],
-        "methods": ["Controlled Experiment"],
-        "frameworks": [],
-        "theories": ["Plant Physiology"]
+        principles: ["Core Principle A"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Method B"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Framework C"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Theory D"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
     },
     pdfSample002: {
-        // Expected result for mockPdfSamples.sample2, after aggregation from its 3 chunks
-        // This assumes successful extraction and aggregation of fields spread across chunks.
-        // For simplicity, let's assume the most complete information is retained.
-        "Research Objective": "Explore novel quantum algorithms.",
-        "Methods": "We employed a qubit simulation framework. Algorithms tested on simulated quantum hardware.",
-        "Dataset(s)": "Simulated qubit states and gate operations data.", // Repaired from almostJson in MockLLMResponses
-        "Key Findings": "Algorithm X shows a 50% speedup over classical counterparts for specific problem sets.", // Or from errorsAndList if that's chosen
-        "Limitations": "Current quantum hardware is noisy and error-prone. Simulation does not fully capture real-world noise.", // Or from errorsAndList
-        "Future Work": "Test on actual quantum hardware. Refine algorithm for noise tolerance.", // Or from errorsAndList
-        "Applications": "Cryptography, materials science, drug discovery.", // Aggregated or from most complete chunk
-        "principles": ["Quantum Mechanics", "Superposition", "Entanglement"], // Aggregated
-        "methods": ["Quantum Simulation", "Algorithm Benchmarking"], // Aggregated
-        "frameworks": ["Qiskit"], // From chunk2
-        "theories": ["Quantum Information Theory"] // From chunk3
+        principles: ["Quantum Mechanics", "Superposition", "Entanglement"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Quantum Simulation", "Algorithm Benchmarking", "Bell Test"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Qiskit", "Density Matrix Formalism"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Quantum Information Theory", "Computational Complexity Theory"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    },
+    testDoc1_Base: {
+        principles: ["Photosynthesis", "Cellular Respiration"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Controlled Experiment", "Microscopy"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Scientific Method"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Plant Physiology", "Evolutionary Biology"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    },
+    testDoc2_Complex: {
+        principles: ["General Relativity", "Special Relativity"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        methods: ["Tensor Calculus", "Thought Experiments"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        frameworks: ["Minkowski Spacetime"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+        theories: ["Field Theory"].map(s => ({ value: s, source: "Fixture" } as TraceableConcept)),
+    },
+    testDoc3_EmptyResults: {
+        principles: [],
+        methods: [],
+        frameworks: [],
+        theories: [],
     },
     // Add more expected results corresponding to other mockPdfSamples
 }; 

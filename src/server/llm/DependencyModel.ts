@@ -43,9 +43,11 @@ export class DependencyModel {
      * @param concepts The extracted concepts from a document.
      */
     public analyzeDependencies(concepts: ExtractedConcepts): void {
-        const presentFields = (DOMAIN_SCHEMA.fields as readonly string[]).filter(
-            field => concepts[field] &&
-                (Array.isArray(concepts[field]) ? (concepts[field] as string[]).length > 0 : typeof concepts[field] === 'string')
+        const presentFields = (DOMAIN_SCHEMA.fields as readonly DomainField[]).filter(
+            (field: DomainField) => {
+                const conceptCategory = concepts[field];
+                return conceptCategory && Array.isArray(conceptCategory) && conceptCategory.length > 0;
+            }
         ) as DomainField[];
 
         if (presentFields.length < 2) {
