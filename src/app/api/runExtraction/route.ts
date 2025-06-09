@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ExtractionOrchestrator } from '@/server/llm/ExtractionOrchestrator';
-import type { PersonaType } from '@/server/llm/RelevanceFilteringAgent';
+import type { PersonaType } from '@/types';
 import { safeDecodeBuffer } from '@/lib/utils/SafeDocumentDecoder';
 
 // Default PDF extraction microservice URL (can be overridden by environment variable)
@@ -48,6 +48,13 @@ async function parseMultipartFormData(fileName: string, fileBuffer: Buffer, file
 
 const ALLOWED_PERSONAS: PersonaType[] = ['educator', 'researcher', 'creator'];
 
+// Persona mapping for numeric string inputs
+const personaMap: Record<string, PersonaType> = {
+    '1': 'creator',
+    '2': 'educator',
+    '3': 'researcher',
+};
+
 export async function POST(req: NextRequest) {
     console.log('[runExtraction API] Received POST request.');
     try {
@@ -61,17 +68,27 @@ export async function POST(req: NextRequest) {
         // 🔧 17D HARNESS PATCH INJECTION — END
 
         const file = formData.get('file') as File;
-        const personaValue = formData.get('persona') as string | null;
-        const normalizedPersona = personaValue?.trim().toLowerCase();
+        const personaValueFromForm = formData.get('persona') as string | null;
 
-        console.log('[runExtraction API] Parsed FormData:', { fileName: file?.name, personaValue });
+        // Apply mapping: if personaValueFromForm is "1", "2", or "3", it gets mapped.
+        // Otherwise, use personaValueFromForm directly (handles cases like "creator", "educator", "researcher" or null).
+        const mappedPersonaValue = personaValueFromForm ? (personaMap[personaValueFromForm] ?? personaValueFromForm) : null;
+
+        const normalizedPersona = mappedPersonaValue?.trim().toLowerCase();
+
+        console.log('[runExtraction API] Parsed FormData:', {
+            fileName: file?.name,
+            originalPersonaValue: personaValueFromForm,
+            mappedPersonaValue: mappedPersonaValue,
+            normalizedPersona
+        });
 
         if (!file) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
         }
 
         if (!normalizedPersona) {
-            return NextResponse.json({ error: 'No persona provided' }, { status: 400 });
+            return NextResponse.json({ error: 'No persona provided or persona could not be resolved' }, { status: 400 });
         }
 
         if (!ALLOWED_PERSONAS.includes(normalizedPersona as PersonaType)) {

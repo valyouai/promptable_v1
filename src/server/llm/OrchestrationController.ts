@@ -1,10 +1,10 @@
 // File: src/server/llm/OrchestrationController.ts
 
-import type { ExtractedConcepts } from '@/types';
+import type { ExtractedConcepts, PersonaType } from '@/types';
 import { AbductiveHypothesisAgent, AbductiveHypothesisOutput } from './AbductiveHypothesisAgent';
 import { GapDetectionAgent, GapDetectionOutput } from './GapDetectionAgent';
 import { AnalogicalMappingAgent, AnalogicalMappingOutput } from './AnalogicalMappingAgent';
-import { RelevanceFilteringAgent, RelevanceFilteringOutput, PersonaType } from './RelevanceFilteringAgent';
+import { RelevanceFilteringAgent, RelevanceFilteringOutput } from './RelevanceFilteringAgent';
 
 export interface CognitiveOrchestrationOutput {
     abductiveOutput: AbductiveHypothesisOutput;
@@ -22,17 +22,17 @@ export class OrchestrationController {
 
         // 1️⃣ Run Abductive Reasoning
         orchestrationLog.push('Running AbductiveHypothesisAgent...');
-        const abductiveOutput = AbductiveHypothesisAgent.generateHypotheses(extractedConcepts);
+        const abductiveOutput = AbductiveHypothesisAgent.generateHypotheses(extractedConcepts, persona);
         orchestrationLog.push(`Generated ${abductiveOutput.potentialHypotheses.length} abductive hypotheses.`);
 
         // 2️⃣ Run Gap Detection
         orchestrationLog.push('Running GapDetectionAgent...');
-        const gapDetectionOutput = GapDetectionAgent.detectGaps(extractedConcepts);
+        const gapDetectionOutput = GapDetectionAgent.detectGaps(extractedConcepts, persona);
         orchestrationLog.push(`Detected ${gapDetectionOutput.identifiedGaps.length} gaps.`);
 
         // 3️⃣ Run Analogical Mapping
         orchestrationLog.push('Running AnalogicalMappingAgent...');
-        const analogicalMappingOutput = AnalogicalMappingAgent.mapAnalogies(extractedConcepts);
+        const analogicalMappingOutput = AnalogicalMappingAgent.mapAnalogies(extractedConcepts, persona);
         orchestrationLog.push(`Generated ${analogicalMappingOutput.mappedAnalogies.length} analogical mappings.`);
 
         // 4️⃣ Run Persona-Based Relevance Filtering

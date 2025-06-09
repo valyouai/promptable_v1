@@ -1,15 +1,20 @@
-import type { ExtractedConcepts, PersonaType, GenerationConfig } from "@/types";
+import type { ExtractedConcepts, PersonaType, GenerationConfig, TraceableConcept } from "@/types";
 
 function sanitizeExtractedConcepts(concepts: ExtractedConcepts): ExtractedConcepts {
-    const sanitize = (arr?: string[]) =>
-        (arr || []).map(item => item.replace(/[\r\n\t]/g, ' ').trim());
+    // Helper to sanitize an array of TraceableConcepts by cleaning their .value property
+    const sanitizeTraceableConceptArray = (arr?: TraceableConcept[]): TraceableConcept[] =>
+        (arr || []).map(tc => ({
+            ...tc,
+            // Defensively handle cases where tc.value might be undefined or not a string
+            value: (typeof tc.value === 'string' ? tc.value.replace(/[\r\n\t]/g, ' ').trim() : '')
+        }));
 
     return {
-        principles: sanitize(concepts.principles),
-        methods: sanitize(concepts.methods),
-        frameworks: sanitize(concepts.frameworks),
-        theories: sanitize(concepts.theories),
-        notes: concepts.notes?.replace(/[\r\n\t]/g, ' ').trim(),
+        principles: sanitizeTraceableConceptArray(concepts.principles),
+        methods: sanitizeTraceableConceptArray(concepts.methods),
+        frameworks: sanitizeTraceableConceptArray(concepts.frameworks),
+        theories: sanitizeTraceableConceptArray(concepts.theories),
+        // Removed notes as it's not part of ExtractedConcepts type
     };
 }
 
@@ -22,19 +27,27 @@ export function buildSystemPrompt(params: {
     const { extractedConcepts, persona, contentType, generationConfig } = params;
     const safeConcepts = sanitizeExtractedConcepts(extractedConcepts);
 
-    // TODO: Implement sophisticated system prompt generation logic here
-    // This is a placeholder, you'll want to use the safeConcepts, persona,
-    // contentType, and generationConfig to craft a dynamic and effective prompt.
+    // Helper to format an array of TraceableConcepts into a string list of their values
+    const formatConceptList = (concepts?: TraceableConcept[]): string => {
+        if (!concepts || concepts.length === 0) return 'N/A';
+        return concepts.map(tc => {
+            // If tc.value is literally "[object Object]", replace it.
+            // This indicates an upstream issue where an object was improperly stringified into a value.
+            if (tc.value === "[object Object]") {
+                console.warn(`[SystemPromptBuilder] formatConceptList: Found TraceableConcept.value as literal string "[object Object]". Replacing. Original tc: ${JSON.stringify(tc)}`);
+                return "[Data Error: Object Stringified]";
+            }
+            return tc.value;
+        }).join(', ');
+    };
 
     let prompt = `You are an AI assistant for a ${persona} persona, specializing in ${contentType}.`;
     prompt += `\n\nHere are the extracted concepts from the document:\n`;
-    prompt += `Principles: ${safeConcepts.principles?.join(', ') || 'N/A'}\n`;
-    prompt += `Methods: ${safeConcepts.methods?.join(', ') || 'N/A'}\n`;
-    prompt += `Frameworks: ${safeConcepts.frameworks?.join(', ') || 'N/A'}\n`;
-    prompt += `Theories: ${safeConcepts.theories?.join(', ') || 'N/A'}\n`;
-    if (safeConcepts.notes) {
-        prompt += `Notes: ${safeConcepts.notes}\n`;
-    }
+    prompt += `Principles: ${formatConceptList(safeConcepts.principles)}\n`;
+    prompt += `Methods: ${formatConceptList(safeConcepts.methods)}\n`;
+    prompt += `Frameworks: ${formatConceptList(safeConcepts.frameworks)}\n`;
+    prompt += `Theories: ${formatConceptList(safeConcepts.theories)}\n`;
+    // Removed notes handling as it's not part of safeConcepts after sanitization
 
     if (Object.keys(generationConfig).length > 0) {
         prompt += `\nGeneration configuration provided: ${JSON.stringify(generationConfig)}. Incorporate these settings into the prompt as appropriate.`;

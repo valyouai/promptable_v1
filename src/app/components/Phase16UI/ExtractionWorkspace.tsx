@@ -6,7 +6,12 @@ import ExtractionProgress from "./ExtractionProgress";
 import ExtractionResultViewer from "./ExtractionResultViewer";
 import SystemPromptGenerator from "./SystemPromptGenerator";
 import KernelErrorBoundary from "./KernelErrorBoundary";
-import type { PersonaType, CognitiveKernelResult } from "@/types";
+import type { PersonaType, CognitiveKernelResult, ExtractedConcepts, TransferKernelConceptSet } from "@/types";
+import AbductiveHypothesesViewer from './cognitive/AbductiveHypothesesViewer';
+import GapDetectionViewer from './cognitive/GapDetectionViewer';
+import AnalogicalMappingViewer from './cognitive/AnalogicalMappingViewer';
+import RelevanceFilteringViewer from './cognitive/RelevanceFilteringViewer';
+import DebugDataInspector from './cognitive/DebugDataInspector';
 
 interface ExtractionWorkspaceProps {
   persona: PersonaType;
@@ -41,7 +46,7 @@ const ExtractionWorkspace: React.FC<ExtractionWorkspaceProps> = ({ persona, cont
         try {
           const errorData = await response.json();
           errorDetails = errorData.error || errorData.message || errorData.details || errorDetails;
-        } catch (_parseError) {
+        } catch {
           errorDetails = response.statusText || errorDetails;
         }
         throw new Error(errorDetails);
@@ -85,7 +90,7 @@ const ExtractionWorkspace: React.FC<ExtractionWorkspaceProps> = ({ persona, cont
         try {
           const errorData = await response.json();
           errorDetails = errorData.error || errorData.message || errorData.details || errorDetails;
-        } catch (_parseError) {
+        } catch {
           errorDetails = response.statusText || errorDetails;
         }
         throw new Error(errorDetails);
@@ -113,23 +118,66 @@ const ExtractionWorkspace: React.FC<ExtractionWorkspaceProps> = ({ persona, cont
 
       {loading && <ExtractionProgress />}
       {error && <KernelErrorBoundary error={error} />}
-      {result && !loading && (
-        <>
-          <ExtractionResultViewer data={result.extractionResult.finalConcepts} />
-          <SystemPromptGenerator
-            extractedConcepts={result.extractionResult.finalConcepts}
-            synthesizedPrompt={synthesizedPrompt}
-            onGenerate={handleGenerateSystemPrompt}
-            isGenerating={isGeneratingPrompt}
-          />
-          {promptError && (
-            <div className="mt-4 p-4 border border-red-500 bg-red-100 text-red-700 rounded">
-              <p className="font-semibold">System Prompt Generation Error:</p>
-              <p>{promptError}</p>
-            </div>
-          )}
-        </>
-      )}
+      {result && !loading && (() => {
+        // Source remains ExtractedConcepts for displayConcepts
+        const displayConcepts: ExtractedConcepts | undefined = result?.cognitiveOutput?.relevanceFilteringOutput?.filteredConcepts 
+          ?? result?.extractionResult?.finalConcepts;
+        
+        // Adapter helper
+        const convertExtractedToTransferKernel = (concepts: ExtractedConcepts): TransferKernelConceptSet => ({
+          personaPrinciples: concepts.principles ?? [],
+          personaMethods: concepts.methods ?? [],
+          personaFrameworks: concepts.frameworks ?? [],
+          personaTheories: concepts.theories ?? [],
+        });
+
+        if (!displayConcepts) {
+          return null; 
+        }
+
+        return (
+          <>
+            <h2 className="text-lg font-bold mb-2">--- DEBUG: ExtractionResultViewer ---</h2>
+            {/* Use adapter to pass correct data structure */}
+            <ExtractionResultViewer data={convertExtractedToTransferKernel(displayConcepts)} />
+
+            {result.cognitiveOutput?.abductiveOutput && (
+              <AbductiveHypothesesViewer data={result.cognitiveOutput.abductiveOutput} />
+            )}
+
+            {result?.cognitiveOutput?.gapDetectionOutput && (
+              <GapDetectionViewer data={result.cognitiveOutput.gapDetectionOutput} />
+            )}
+
+            {result?.cognitiveOutput?.analogicalMappingOutput && (
+              <AnalogicalMappingViewer data={result.cognitiveOutput.analogicalMappingOutput} />
+            )}
+
+            {result?.cognitiveOutput?.relevanceFilteringOutput && (
+              <RelevanceFilteringViewer data={result.cognitiveOutput.relevanceFilteringOutput} />
+            )}
+
+            {/* PHASE 20: Display Self-Correction Details */}
+            {result?.extractionResult?.selfCorrectionDetails && (
+              <DebugDataInspector label="SelfCorrectionDetails" data={result.extractionResult.selfCorrectionDetails} />
+            )}
+
+            <h2 className="text-lg font-bold mb-2">--- DEBUG: SystemPromptGenerator ---</h2>
+            <SystemPromptGenerator
+              extractedConcepts={displayConcepts}
+              synthesizedPrompt={synthesizedPrompt}
+              onGenerate={handleGenerateSystemPrompt}
+              isGenerating={isGeneratingPrompt}
+            />
+            {promptError && (
+              <div className="mt-4 p-4 border border-red-500 bg-red-100 text-red-700 rounded">
+                <p className="font-semibold">System Prompt Generation Error:</p>
+                <p>{promptError}</p>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* HARNESS CONTROLS */}
       {process.env.NEXT_PUBLIC_TEST_MODE === 'true' && (

@@ -1,5 +1,6 @@
 import { PromptCompilerInput, CompiledPromptOutput } from "./PromptCompilerTypes";
 import { DomainTransferProfiles } from "@/server/llm/domain-profiles/DomainTransferProfiles";
+import { conceptToString } from '../utils/conceptToString';
 
 export class PromptCompilerEngine {
     static compile(input: PromptCompilerInput): CompiledPromptOutput {
@@ -22,22 +23,22 @@ export class PromptCompilerEngine {
         const theoryDepth = personaProfile.translationConservativeness;
         const exampleAggression = personaProfile.semanticBridgeAggressiveness;
 
-        // Concept formatting (existing logic, already robust)
+        // Concept formatting using conceptToString utility
         const principles = conceptSet.personaPrinciples.map(p =>
-            `${p.value}${verbosityFactor > 0.6 ? " — critical foundation for this task" : ""} (Source: ${p.source})`
-        ).join(", ") || "(no principles provided)"; // Add fallback for empty join
+            `${conceptToString(p)}${verbosityFactor > 0.6 ? " — critical foundation for this task" : ""}`
+        ).join(", ") || "(no principles provided)";
 
         const methods = conceptSet.personaMethods.map(m =>
-            `${m.value}${exampleAggression > 0.6 ? " (explore variations actively)" : ""} (Source: ${m.source})`
-        ).join(", ") || "(no methods provided)"; // Add fallback for empty join
+            `${conceptToString(m)}${exampleAggression > 0.6 ? " (explore variations actively)" : ""}`
+        ).join(", ") || "(no methods provided)";
 
         const frameworks = conceptSet.personaFrameworks.map(f =>
-            `${f.value} (Source: ${f.source})`
-        ).join(", ") || "(no frameworks provided)"; // Add fallback for empty join
+            conceptToString(f) // No specific suffix in original code for frameworks beyond what conceptToString provides
+        ).join(", ") || "(no frameworks provided)";
 
         const theories = conceptSet.personaTheories.map(t =>
-            `${t.value}${theoryDepth > 0.6 ? " (requires deeper theoretical understanding)" : ""} (Source: ${t.source})`
-        ).join(", ") || "(no theories provided)"; // Add fallback for empty join
+            `${conceptToString(t)}${theoryDepth > 0.6 ? " (requires deeper theoretical understanding)" : ""}`
+        ).join(", ") || "(no theories provided)";
 
         // Master System Prompt Template
         // Using {{domainKey}} for the input.domain and {{domainDisplayName}} for domainProfile.domain

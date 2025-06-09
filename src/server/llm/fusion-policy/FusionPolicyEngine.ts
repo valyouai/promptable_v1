@@ -1,7 +1,7 @@
 // src/server/llm/fusion-policy/FusionPolicyEngine.ts
 
-import { TransferKernelConceptSet } from "../prompt-generator/PromptGeneratorTypes";
-import { TraceableConcept } from "../../../types"; // Assuming TraceableConcept is in src/types/index.ts
+// import { TransferKernelConceptSet } from "../prompt-generator/PromptGeneratorTypes"; // Will be removed if not used elsewhere
+import { TraceableConcept, ExtractedConcepts } from "../../../types"; // Assuming TraceableConcept is in src/types/index.ts
 
 export class FusionPolicyEngine {
 
@@ -47,19 +47,19 @@ export class FusionPolicyEngine {
 
     private static remappedToAnchorCount = 0; // Phase 26.C: Counter
 
-    static applyPolicy(conceptSet: TransferKernelConceptSet): TransferKernelConceptSet {
+    static applyPolicy(conceptSet: ExtractedConcepts): ExtractedConcepts {
         this.remappedToAnchorCount = 0; // Reset for each call
         const log = {
-            principles: { pre: conceptSet.personaPrinciples?.length || 0, post: 0 },
-            methods: { pre: conceptSet.personaMethods?.length || 0, post: 0 },
-            frameworks: { pre: conceptSet.personaFrameworks?.length || 0, post: 0 },
-            theories: { pre: conceptSet.personaTheories?.length || 0, post: 0 },
+            principles: { pre: conceptSet.principles?.length || 0, post: 0 },
+            methods: { pre: conceptSet.methods?.length || 0, post: 0 },
+            frameworks: { pre: conceptSet.frameworks?.length || 0, post: 0 },
+            theories: { pre: conceptSet.theories?.length || 0, post: 0 },
         };
 
-        const policyAdjustedPrinciples = this._normalizeConceptList(conceptSet.personaPrinciples);
-        const policyAdjustedMethods = this._normalizeConceptList(conceptSet.personaMethods);
-        const policyAdjustedFrameworks = this._normalizeConceptList(conceptSet.personaFrameworks);
-        const policyAdjustedTheories = this._normalizeConceptList(conceptSet.personaTheories);
+        const policyAdjustedPrinciples = this._normalizeConceptList(conceptSet.principles);
+        const policyAdjustedMethods = this._normalizeConceptList(conceptSet.methods);
+        const policyAdjustedFrameworks = this._normalizeConceptList(conceptSet.frameworks);
+        const policyAdjustedTheories = this._normalizeConceptList(conceptSet.theories);
 
         log.principles.post = policyAdjustedPrinciples.length;
         log.methods.post = policyAdjustedMethods.length;
@@ -74,15 +74,17 @@ export class FusionPolicyEngine {
         console.log(`FusionPolicyEngine soft clustering applied: ${this.remappedToAnchorCount} concepts remapped to anchors.`); // Phase 26.C Log
 
         return {
-            personaPrinciples: policyAdjustedPrinciples,
-            personaMethods: policyAdjustedMethods,
-            personaFrameworks: policyAdjustedFrameworks,
-            personaTheories: policyAdjustedTheories,
+            principles: policyAdjustedPrinciples,
+            methods: policyAdjustedMethods,
+            frameworks: policyAdjustedFrameworks,
+            theories: policyAdjustedTheories,
         };
     }
 
     // Renamed from normalizeConcepts to _normalizeConceptList for clarity
-    private static _normalizeConceptList(concepts: TraceableConcept[]): TraceableConcept[] {
+    // This method still operates on TraceableConcept and returns TraceableConcept
+    // as it's used by applyPolicy before weighting.
+    private static _normalizeConceptList(concepts: TraceableConcept[] | undefined): TraceableConcept[] {
         if (!concepts) return [];
         const normalizedMap = new Map<string, TraceableConcept>();
 
@@ -145,23 +147,22 @@ export class FusionPolicyEngine {
             .join(' ');
     }
 
-    // Phase 26.B: Semantic Equivalence Collapse
-    static collapseSemanticEquivalents(inputSet: TransferKernelConceptSet): TransferKernelConceptSet {
+    // Phase 26.B: Semantic Equivalence Collapse - Operates on ExtractedConcepts
+    static collapseSemanticEquivalents(inputSet: ExtractedConcepts): ExtractedConcepts {
         return {
-            personaPrinciples: this._deduplicateConceptList(inputSet.personaPrinciples),
-            personaMethods: this._deduplicateConceptList(inputSet.personaMethods),
-            personaFrameworks: this._deduplicateConceptList(inputSet.personaFrameworks),
-            personaTheories: this._deduplicateConceptList(inputSet.personaTheories),
+            principles: this._deduplicateConceptList(inputSet.principles),
+            methods: this._deduplicateConceptList(inputSet.methods),
+            frameworks: this._deduplicateConceptList(inputSet.frameworks),
+            theories: this._deduplicateConceptList(inputSet.theories),
         };
     }
 
-    private static _deduplicateConceptList(concepts: TraceableConcept[]): TraceableConcept[] {
+    // Operates on TraceableConcept[]
+    private static _deduplicateConceptList(concepts: TraceableConcept[] | undefined): TraceableConcept[] {
         if (!concepts) return [];
         const uniqueConceptsMap = new Map<string, TraceableConcept>();
         for (const concept of concepts) {
             if (concept && typeof concept.value === 'string') {
-                // concept.value is the presentation value (already anchored/title-cased by _normalizeConceptList)
-                // _getNormalizedStringKey will correctly resolve it to its ultimate canonical/anchored key
                 const deduplicationKey = this._getNormalizedStringKey(concept.value);
                 if (deduplicationKey && !uniqueConceptsMap.has(deduplicationKey)) {
                     uniqueConceptsMap.set(deduplicationKey, concept);

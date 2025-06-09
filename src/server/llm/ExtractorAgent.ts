@@ -1,17 +1,8 @@
-import type { ExtractedConcepts } from '@/types';
+import type { ExtractedConcepts, TraceableConcept } from '@/types';
 // DOMAIN_SCHEMA import removed as it's not used in the new extract method.
 import { LLMAdapterRouter } from './LLMAdapterRouter';
-import { jsonrepair } from 'jsonrepair';
+import { LLMExtractionSanitizer, SanitizedLLMOutput, stripMarkdownWrappers } from './parsers/LLMExtractionSanitizer';
 // import type OpenAI from 'openai'; // Keep for ChatCompletionMessageParam type if DeepSeekAdapter reuses it -> Removing as changing messages type
-
-function stripMarkdownWrappers(raw: string): string {
-    if (typeof raw !== 'string') {
-        return raw; // Or handle as an error, or return empty string
-    }
-    return raw
-        .replace(/^\s*```(?:json)?\s*/i, '')  // Remove starting code block
-        .replace(/\s*```$/i, '');             // Remove ending code block
-}
 
 export class ExtractorAgent {
     public static async extract(chunkText: string): Promise<ExtractedConcepts> {
@@ -51,58 +42,72 @@ Only use values mentioned in the text. Return all outputs as string arrays. If a
         });
 
         // 4.d Parse output (use repair fallback)
-        let parsed: Partial<ExtractedConcepts> = {};
+        let parsed: SanitizedLLMOutput;
         const responseContent = (response as { content: string }).content;
 
         if (typeof responseContent === 'string' && responseContent.trim() !== '') {
             const cleanedContent = stripMarkdownWrappers(responseContent);
-            try {
-                parsed = JSON.parse(cleanedContent);
-            } catch (initialError) {
-                console.warn("[ExtractorAgent] Initial JSON parsing of cleaned content failed. Attempting repair on original content.", String(initialError));
-                try {
-                    const repairedJsonString = jsonrepair(responseContent); // Repair original content
-                    parsed = JSON.parse(repairedJsonString);
-                } catch (repairError) {
-                    console.error("[ExtractorAgent] JSON repair also failed. Proceeding with empty data.", String(repairError));
-                    // Ensure parsed is an object even after failed repair attempt
-                    if (typeof parsed !== 'object' || parsed === null) {
-                        parsed = {};
-                    }
-                }
-            }
+            parsed = LLMExtractionSanitizer.sanitize(cleanedContent);
         } else {
-            console.warn("[ExtractorAgent] LLM response content is not a parsable string or is empty. Proceeding with empty data.");
-            // parsed remains {} as initialized
+            console.warn("[ExtractorAgent] LLM response content is not a parsable string or is empty. Proceeding with empty sanitized data.");
+            parsed = LLMExtractionSanitizer.sanitize("");
         }
 
-        // Ensure parsed is an object after all attempts
-        if (typeof parsed !== 'object' || parsed === null) {
-            parsed = {};
-        }
+        // The 'parsed' object now directly comes from the sanitizer and conforms to SanitizedLLMOutput,
+        // where each concept field (principles, methods, etc.) is already a string[].
 
-        // Ensure array properties and string content
-        const principles = Array.isArray(parsed.principles) ? parsed.principles as string[] : [];
-        const methods = Array.isArray(parsed.methods) ? parsed.methods as string[] : [];
-        const frameworks = Array.isArray(parsed.frameworks) ? parsed.frameworks as string[] : [];
-        const theories = Array.isArray(parsed.theories) ? parsed.theories as string[] : [];
+        // The existing forceStringArray can act as a final check or be simplified.
+        // For now, its current filtering logic is safe for already string arrays.
+        const forceStringArray = (arrCandidate: string[] | undefined): string[] => {
+            if (Array.isArray(arrCandidate)) {
+                // Since arrCandidate is now string[] from SanitizedLLMOutput,
+                // this filter is technically redundant but harmless.
+                // It also handles a potential undefined if a field was missing entirely pre-sanitization (though sanitizer ensures fields).
+                return arrCandidate.filter(item => typeof item === 'string');
+            }
+            return [];
+        };
 
-        // Handle the 'notes' field in a type-safe way.
-        // The prompt to the LLM (promptForSystem) currently does not explicitly ask for 'notes'.
-        // Thus, 'parsed.notes' will likely be undefined.
-        // We default 'notes' to an empty string to ensure the returned object
-        // can satisfy an 'ExtractedConcepts' type that might require/include a 'notes: string' field.
-        const notesValue: string = (parsed && typeof parsed.notes === 'string') ? parsed.notes : "";
+        // Use the fields from the sanitized 'parsed' object
+        const principlesStrings: string[] = forceStringArray(parsed.principles);
+        const methodsStrings: string[] = forceStringArray(parsed.methods);
+        const frameworksStrings: string[] = forceStringArray(parsed.frameworks);
+        const theoriesStrings: string[] = forceStringArray(parsed.theories);
+
+        // AGGRESSIVE FINAL STRING CLEANUP before creating TraceableConcepts
+        const finalClean = (s: string): string => {
+            if (s === "[object Object]") {
+                console.warn(`[ExtractorAgent] Aggressively replacing literal string "[object Object]" before TraceableConcept creation.`);
+                return "[Invalid Extracted String]";
+            }
+            return s;
+        };
+
+        // Helper to transform a string value to a TraceableConcept
+        const toTraceableConcept = (value: string): TraceableConcept => ({
+            value: finalClean(value), // Apply final clean here
+            source: 'ExtractorAgent',
+            score: 1.0, // Default score, as this agent primarily extracts, not scores.
+        });
+
+        // Transform string arrays to TraceableConcept arrays
+        const principles: TraceableConcept[] = principlesStrings.map(toTraceableConcept);
+        const methods: TraceableConcept[] = methodsStrings.map(toTraceableConcept);
+        const frameworks: TraceableConcept[] = frameworksStrings.map(toTraceableConcept);
+        const theories: TraceableConcept[] = theoriesStrings.map(toTraceableConcept);
+
+        // 'notes' field handling is removed as per instructions, assuming ExtractedConcepts type no longer includes it.
+        // const notesValue: string = (parsed && typeof parsed.notes === 'string') ? parsed.notes : "";
 
         // Construct and return the final ExtractedConcepts object.
-        // The 'as ExtractedConcepts' cast asserts that this structure matches the type definition.
         return {
             principles,
             methods,
             frameworks,
             theories,
-            notes: notesValue,
-        } as ExtractedConcepts;
+            // notes: notesValue, // Removed notes
+        }; // The 'as ExtractedConcepts' cast is removed as the structure should now directly match.
+        // If type errors arise, it might need to be reinstated or the ExtractedConcepts type checked.
     }
 }
 

@@ -1,4 +1,4 @@
-import type { ExtractedConcepts } from '@/types';
+import type { ExtractedConcepts, TraceableConcept } from '@/types';
 import type { AmbiguityScore } from './AmbiguityDetectorAgent'; // Assuming this path is correct
 
 /**
@@ -79,11 +79,21 @@ export class ReinforcementAgent {
                         (refinedConcepts[conceptKey] as string[]) = [];
                     }
 
-                    const existingValues = new Set((refinedConcepts[conceptKey] as string[]).map(v => v.toLowerCase()));
+                    const existingValues = new Set((refinedConcepts[conceptKey] as TraceableConcept[]).map(tc => tc.value.toLowerCase()));
                     const newKeywords = foundKeywords.filter(kw => !existingValues.has(kw.toLowerCase()));
 
                     if (newKeywords.length > 0) {
-                        (refinedConcepts[conceptKey] as string[]).push(...newKeywords);
+                        const newTraceableConcepts = newKeywords.map(kw => ({
+                            value: kw,
+                            source: "ReinforcementAgentKeywordRecovery",
+                            score: 0.8 // Assign a default score for recovered concepts
+                        } as TraceableConcept));
+
+                        // Ensure the field is correctly typed as TraceableConcept[] before pushing
+                        if (!Array.isArray(refinedConcepts[conceptKey])) {
+                            (refinedConcepts[conceptKey] as TraceableConcept[]) = [];
+                        }
+                        (refinedConcepts[conceptKey] as TraceableConcept[]).push(...newTraceableConcepts);
                         recoveryOccurred = true;
                         const recoveryMessage = `Recovered [${newKeywords.join(', ')}] for field '${conceptKey}' via document keyword scan.`;
                         recoveryNotes.push(recoveryMessage);
@@ -102,21 +112,9 @@ export class ReinforcementAgent {
         if (recoveryOccurred) {
             confidenceScore = 0.65;
             refinementSummary = recoveryNotes.join(" ");
-            if (refinedConcepts.notes) {
-                refinedConcepts.notes += " " + recoveryNotes.join(" ");
-            } else {
-                refinedConcepts.notes = recoveryNotes.join(" ");
-            }
         } else if (highAmbiguityExistsOverall) {
-            const currentNotes = refinedConcepts.notes || "";
             const ambiguityNote = "[ReinforcementAgent Note: High ambiguity detected in initial extraction; further review advised.]";
-            if (!currentNotes.includes(ambiguityNote)) {
-                refinedConcepts.notes =
-                    currentNotes +
-                    (currentNotes ? " " : "") +
-                    ambiguityNote;
-            }
-            refinementSummary = "High ambiguity detected. No keywords recovered. Added a note to the concepts. Full contextual re-analysis pending full agent implementation.";
+            refinementSummary = `High ambiguity detected. No keywords recovered. ${ambiguityNote} Full contextual re-analysis pending full agent implementation.`;
             confidenceScore = 0.3; // Lower confidence due to detected high ambiguity and no recovery
             console.log('[ReinforcementAgent] High ambiguity detected, no keywords recovered. Mock refinement applied.');
         } else {

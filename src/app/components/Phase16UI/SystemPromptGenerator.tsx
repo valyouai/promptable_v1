@@ -11,7 +11,6 @@ interface Props {
 }
 
 const SystemPromptGenerator: React.FC<Props> = ({
-  extractedConcepts: _extractedConcepts,
   synthesizedPrompt,
   onGenerate,
   isGenerating,
